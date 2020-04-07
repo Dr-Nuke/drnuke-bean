@@ -10,11 +10,13 @@ from drnukebean.importer import ibkr
 # baseCcy: XXX # 'USD', or 'CHF'
 
 # Your IBKR flex Query needs to be XML and have the following fields selected:
-# Cash Transactios : ['currency', 'symbol', 'description', 'isin', 'amount', 'type','reportDate']
-# Cash Reports : ['currency', 'fromDate','toDate', 'endingCash']
-# Trades : ['symbol','description', 'isin', 'listingExchange', 'tradeDate', 'quantity',
-# 'tradePrice', 'proceeds', 'currency','ibCommission', 'ibCommissionCurrency',
-# 'netCash','transactionType','dateTime']
+# ct_columns=['type', 'currency', 'description', 'isin', 'amount', 'symbol','reportDate']
+# cr_columns=['currency', 'fromDate','toDate', 'endingCash']
+# tr_columns=['buySell', 'currency', 'symbol', 'description', 'tradeDate', 'quantity',
+#        'tradePrice', 'ibCommission', 'ibCommissionCurrency', 'notes', 'cost',
+#        'openDateTime', 'levelOfDetail', 'ibOrderID', 'proceeds', 
+#        'dateTime']
+
 
 # I do not know a nice way to specify the account structure. This importer is 
 # based on my own. You can adjust the getXXXAccount() functions of the importer 

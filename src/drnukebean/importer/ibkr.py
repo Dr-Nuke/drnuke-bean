@@ -447,14 +447,14 @@ class IBKRImporter(importer.ImporterProtocol):
                     merge=False)
                 lotpostings.append(
                     data.Posting(self.getAssetAccount(symbol),
-                        quantity_clo, cost, price, None, None)
+                        minus(quantity_clo), cost, price, None, None)
                 )
 
 
             
             postings=[
-                    data.Posting(self.getAssetAccount(symbol),
-                        quantity, None, price, None, None),
+                    # data.Posting(self.getAssetAccount(symbol),  # this first posting is probably wrong
+                        # quantity, None, price, None, None),
                     data.Posting(self.getLiquidityAccount(currency),
                         proceeds, None, None, None, None)
                         ]  +  \
