@@ -32,36 +32,7 @@ from beancount.core.number import MISSING
 
 from tariochbctools.importers.general.priceLookup import PriceLookup
 
-class InvalidFormatError(Exception):
-    pass
 
-def fmt_number_de(value: str) -> Decimal:
-    #a fix for region specific number formats
-    thousands_sep = '.'
-    decimal_sep = ','
-
-    return Decimal(value.replace(thousands_sep, '').replace(decimal_sep, '.'))
-
-
-def DecimalOrZero(value):
-    # for string to number conversion with empty strings
-    try:
-        return Decimal(value)
-    except:
-        return Decimal(0.0)
-        
-def AmountAdd(A1,A2):
-    # add two amounts 
-    if A1.currency == A2.currency:
-        quant=A1.number+A2.number
-        return amount.Amount(quant,A1.currency)
-    else:
-        raise('Cannot add amounts of differnent currencies: {} and {}'.format(
-            A1.currency,A1.currency))
-
-def minus(A):
-    #a minus operator
-    return amount.Amount(-A.number,A.currency)
 class IBKRImporter(importer.ImporterProtocol):
     """
     Beancount Importer for the Interactive Brokers XML FlexQueries
@@ -73,17 +44,19 @@ class IBKRImporter(importer.ImporterProtocol):
                 WHTSuffix = 'WTax', # 
                 interestSuffix='Interest',
                 FeesSuffix='Fees',
+                PnLSuffix='PnL',
                 fpath=None,  # 
                 depositAccount=''
                 ):
 
         self.Mainaccount = Mainaccount # main IB account in beancount
-        self.currency = currency # main currency of IB account
+        self.currency = currency        # main currency of IB account
         self.divSuffix = divSuffix
         self.WHTSuffix = WHTSuffix
         self.interestSuffix=interestSuffix
         self.FeesSuffix=FeesSuffix
-        self.filepath=fpath # optional file path specification, 
+        self.PnLSuffix=PnLSuffix
+        self.filepath=fpath             # optional file path specification, 
             # if flex query should not be used online (loading time...)
         self.depositAccount = depositAccount # Cash deposits are usually already covered
             # by checkings account statements. If you want anyway the 
@@ -107,7 +80,7 @@ class IBKRImporter(importer.ImporterProtocol):
 
     def getAssetAccount(self,symbol):
         # Assets:Invest:IB:VTI
-        return ':'.join([self.Mainaccount , symbol , symbol])
+        return ':'.join([self.Mainaccount , symbol])
 
     def getWHTAccount(self,symbol):
         # Expenses:Invest:IB:VTI:WTax
@@ -116,6 +89,10 @@ class IBKRImporter(importer.ImporterProtocol):
     def getFeesAccount(self,currency):
         # Expenses:Invest:IB:Fees:USD
         return ':'.join([self.Mainaccount.replace('Assets','Expenses') , self.FeesSuffix,currency])
+
+    def getPNLAccount(self,symbol):
+        # Expenses:Invest:IB:Fees:USD
+        return ':'.join([self.Mainaccount.replace('Assets','Income') , symbol, self.PnLSuffix])
 
     def file_account(self, _):
         return self.account
@@ -152,7 +129,7 @@ class IBKRImporter(importer.ImporterProtocol):
                 return[]
             assert isinstance(statement, Types.FlexQueryResponse)
         else:
-            print('loading from pickle')
+            print('**** loading from pickle')
             with open(self.filepath,'rb') as pf:
                 statement = pickle.load(pf)
        
@@ -163,30 +140,46 @@ class IBKRImporter(importer.ImporterProtocol):
             for entry in poi.__dict__[report]]) 
                 for report in reports}
 
-        # pick the information (out of the big mess) that we really want
-        ct_columns=['currency', 'symbol', 'description', 'isin', 'amount', 'type','reportDate']
-        cr_columns=['currency', 'fromDate','toDate', 'endingCash']
-        tr_columns=['symbol','description', 'isin', 'listingExchange', 'tradeDate', 'quantity',
-        'tradePrice', 'proceeds', 'currency','ibCommission', 'ibCommissionCurrency',
-        'netCash','transactionType','dateTime']
-
         # get single dataFrames
-        ct=tabs['CashTransactions'][ct_columns]
-        tr=tabs['Trades'][tr_columns]
-        cr=tabs['CashReport'][cr_columns]
+        ct=tabs['CashTransactions']
+        tr=tabs['Trades']
+        cr=tabs['CashReport']
 
-        div=ct[ct['type']==CashAction.DIVIDEND] # dividends only
-        wht=ct[ct['type']==CashAction.WHTAX] # WHT only
-        match=pd.merge(div, wht, on=['symbol','reportDate']) # matching WHT & div
-        dep=ct[ct['type']==CashAction.DEPOSITWITHDRAW] # Deposits only
-        int_=ct[ct['type']==CashAction.BROKERINTRCVD] # interest only
+        # throw out IBKR jitter
+        ct.drop(columns=[col for col in ct if all(ct[col].isnull())],inplace=True)
+        tr.drop(columns=[col for col in tr if all(tr[col].isnull())],inplace=True)
+        cr.drop(columns=[col for col in cr if all(cr[col].isnull())],inplace=True)
+        
+        transactions =  self.Trades(tr) + self.CashTransactions(ct) + self.Balances(cr)
+                        
+        return transactions
 
-        transactions=[]
+    def CashTransactions(self, ct):
+        """
+        This function turns the cash transactions table into beancount transactions
+        for dividends, Witholding Tax, Cash deposits (if the flag is set in the
+        ConfigIBKR.py) and Interests.
+        arg ct: pandas DataFrame with the according data
+        returns: list of Beancount transactions 
+        """
+        # first, separate different sorts of Data
+        div = ct[ct['type']==CashAction.DIVIDEND]           # dividends only
+        wht = ct[ct['type']==CashAction.WHTAX]              # WHT only
+        match = pd.merge(div, wht, on=['symbol','reportDate']) # matching WHT & div
+        dep = ct[ct['type']==CashAction.DEPOSITWITHDRAW]    # Deposits only
+        int_ = ct[ct['type']==CashAction.BROKERINTRCVD]     # interest only
+        
+        # list of transactiosn with short name
+        ctTransactions =  self.Dividends(match) + self.Interest(int_) + self.Deposits(dep) 
 
+        return ctTransactions
+        
+    def Dividends(self,match):
+        # this function crates Dividend transactions from IBKR data
         # make dividend & WHT transactions
+        
+        divTransactions=[]
         for idx, row in match.iterrows():
-            # continue # debugging
-            
             currency=row['currency_x']
             currency_wht=row['currency_y']
             if currency != currency_wht:
@@ -208,7 +201,7 @@ class IBKRImporter(importer.ImporterProtocol):
             postings=[data.Posting(self.getDivIncomeAcconut(currency,
                                                             symbol),
                                     -amount_div, None, None, None, None),
-                                   
+                                    
                         data.Posting(self.getWHTAccount(symbol),
                                     -amount_wht, None, None, None, None),
                         data.Posting(self.getLiquidityAccount(currency),
@@ -216,7 +209,7 @@ class IBKRImporter(importer.ImporterProtocol):
                                     None, None, None, None)
                         ]
             meta=data.new_metadata('dividend',0,{'isin':isin,'per_share':pershare})
-            transactions.append(
+            divTransactions.append(
                 data.Transaction(meta, # could add div per share, ISIN,....
                             row['reportDate'],
                             self.flag,
@@ -226,8 +219,12 @@ class IBKRImporter(importer.ImporterProtocol):
                             data.EMPTY_SET,
                             postings
                             ))
+            
+        return divTransactions
 
-        # interest payments
+    def Interest(self,int_):
+        # calculates interest payments from IBKR data
+        intTransactions=[]
         for idx, row in int_.iterrows():
             currency=row['currency']
             amount_=amount.Amount(row['amount'],currency)
@@ -241,7 +238,7 @@ class IBKRImporter(importer.ImporterProtocol):
                                     amount_,None, None, None, None)
                         ]
             meta=data.new_metadata('Interest',0)
-            transactions.append(
+            intTransactions.append(
                 data.Transaction(meta, # could add div per share, ISIN,....
                             row['reportDate'],
                             self.flag,
@@ -251,87 +248,90 @@ class IBKRImporter(importer.ImporterProtocol):
                             data.EMPTY_SET,
                             postings
                             ))
+        return intTransactions
+        
+    def Deposits(self, dep):
+        # creates deposit transactions from IBKR Data
 
-        # cash deposits
+        depTransactions=[]
         # assumes you figured out how to deposit/ withdrawal without fees
-        if len(self.depositAccount)>0: 
-            for idx, row in dep.iterrows():
-                currency=row['currency']
-                amount_=amount.Amount(row['amount'],currency)
-                
-                # make the postings. two for deposits
-                postings=[data.Posting(self.depositAccount,
-                                        -amount_, None, None, None, None),
-                            data.Posting(self.getLiquidityAccount(currency),
-                                        amount_,None, None, None, None)
-                            ]
-                meta=data.new_metadata('deposit/withdrawel',0)
-                transactions.append(
-                    data.Transaction(meta, # could add div per share, ISIN,....
-                                row['reportDate'],
-                                self.flag,
-                                'self',     # payee
-                                "deposit / withdrawal",
-                                data.EMPTY_SET,
-                                data.EMPTY_SET,
-                                postings
-                                ))
-        # Trades
-        for idx, row in tr.iterrows():
-            # continue # debugging
-            currency = row['currency']
-            currency_IBcommision = row['ibCommissionCurrency']
-            symbol = row['symbol']
-            proceeds = amount.Amount(row['proceeds'].__round__(2),currency)
-            netcash = amount.Amount(row['netCash'].__round__(2),currency)
-            commission=amount.Amount((row['ibCommission'].__round__(2)),currency_IBcommision)
-            quantity = amount.Amount(row['quantity'],symbol)
-            price = amount.Amount(row['tradePrice'],currency)
-            text=row['description']
+        if len(self.depositAccount) == 0: # control this from the config file
+            return []
+        for idx, row in dep.iterrows():
+            currency=row['currency']
+            amount_=amount.Amount(row['amount'],currency)
             
-            if quantity.number >=0: # find out what we did
-                is_sell = False
-                buysell = 'buy'
-                                    
-                cost = position.CostSpec(
-                    number_per=D(row['tradePrice']),
-                    number_total=None,
-                    currency=currency,
-                    date=None,
-                    label=None,
-                    merge=False)
-                posting_price=None
-            else:
-                is_sell =True
-                buysell = 'sell'
-                 # For sell transactions, rely on beancount to determine the matching lot.
-                cost = position.CostSpec(
-                    number_per=D(row['tradePrice']),
-                    number_total=None,
-                    currency=currency,
-                    date=None,
-                    label=None,
-                    merge=False)
-                posting_price=None # price
-            
-            # cost=position.CostSpec(None,None,None,price.__str__())
-            # breakpoint()
-            # make the postings. for one trade, four postings
-            postings=[
-                    data.Posting(self.getAssetAccount(symbol),
-                        quantity, cost, posting_price, None, None),
-                    data.Posting(self.getLiquidityAccount(currency),
-                        proceeds, None, None, None, None),
-                    data.Posting(self.getLiquidityAccount(currency_IBcommision),
-                        commission, None, None, None, None),
-                    data.Posting(self.getFeesAccount(currency),
-                                        minus(commission),None, None, None, None)
-                    ]
-            meta=data.new_metadata('trade',0)
-  
-            transactions.append(
+            # make the postings. two for deposits
+            postings=[data.Posting(self.depositAccount,
+                                    -amount_, None, None, None, None),
+                        data.Posting(self.getLiquidityAccount(currency),
+                                    amount_,None, None, None, None)
+                        ]
+            meta=data.new_metadata('deposit/withdrawel',0)
+            depTransactions.append(
                 data.Transaction(meta, # could add div per share, ISIN,....
-                            row['dateTime'].date(),
+                            row['reportDate'],
+                            self.flag,
+                            'self',     # payee
+                            "deposit / withdrawal",
+                            data.EMPTY_SET,
+                            data.EMPTY_SET,
+                            postings
+                            ))
+        return depTransactions
+
+    def Trades(self, tr):
+        """
+        This function turns the IBKR Trades table into beancount transactions
+        for Trades
+        arg tr: pandas DataFrame with the according data
+        returns: list of Beancount transactions 
+        """
+
+        fx = tr[tr['symbol'].apply(isForex)]                # forex transactions
+        stocks = tr[~tr['symbol'].apply(isForex)]           # Stocks transactions
+        
+        trTransactions= self.Forex(fx) +  self.Stocktrades(stocks)
+
+        return trTransactions
+
+    def Forex(self,fx):
+        # returns beancount transactions for IBKR forex transactions
+        
+        fxTransactions=[]
+        for idx, row in fx.iterrows():
+
+            symbol=row['symbol']
+            curr_prim,curr_sec = getForexCurrencies(symbol)
+            currency_IBcommision=row['ibCommissionCurrency']
+            proceeds=amount.Amount(row['proceeds'],curr_sec)
+            quantity = amount.Amount(row['quantity'],curr_prim)
+            price=amount.Amount(row['tradePrice'],curr_sec)
+            commission=amount.Amount(row['ibCommission'],currency_IBcommision)
+            buysell=row['buySell'].name
+
+            cost = position.CostSpec(
+                number_per=None,
+                number_total=None,
+                currency=None,
+                date=None,
+                label=None,
+                merge=False)
+
+            postings=[
+                data.Posting(self.getLiquidityAccount(curr_prim),
+                    quantity, None, price, None, None),
+                data.Posting(self.getLiquidityAccount(curr_sec),
+                    proceeds, None, None, None, None),
+                data.Posting(self.getLiquidityAccount(currency_IBcommision),
+                    commission, None, None, None, None),
+                data.Posting(self.getFeesAccount(currency_IBcommision),
+                                    minus(commission),None, None, None, None)
+            ]
+
+            fxTransactions.append(
+                data.Transaction(data.new_metadata('FX Transaction',0),
+                            row['tradeDate'],
                             self.flag,
                             symbol,     # payee
                             ' '.join([buysell, quantity.to_string() , '@', price.to_string() ]),
@@ -339,8 +339,150 @@ class IBKRImporter(importer.ImporterProtocol):
                             data.EMPTY_SET,
                             postings
                             ))
-                
+        return fxTransactions
+
+    def Stocktrades(self, stocks):
+        # return the stocks transactions
+
+        stocktrades = stocks[stocks['levelOfDetail']=='EXECUTION'] # actual trades
+        buy=stocktrades[stocktrades['buySell'].apply(lambda x : x.name) == 'BUY'] # purchases
+        sale=stocktrades[stocktrades['buySell'].apply(lambda x : x.name) == 'SELL'] # sales
+        lots=stocks[stocks['levelOfDetail']=='CLOSED_LOT'].reset_index(drop=True)  # closed lots
+
+        stockTransactions= self.Panic(sale,lots) + self.Shopping(buy)  
+        
+        return stockTransactions
+
+    def Shopping(self,buy):
+        # let's go shopping!!
+
+        Shoppingbag=[]
+        for idx, row in buy.iterrows():
+            # continue # debugging
+            currency = row['currency']
+            currency_IBcommision = row['ibCommissionCurrency']
+            symbol = row['symbol']
+            proceeds = amount.Amount(row['proceeds'].__round__(2),currency)
+            commission=amount.Amount((row['ibCommission'].__round__(2)),currency_IBcommision)
+            quantity = amount.Amount(row['quantity'],symbol)
+            price = amount.Amount(row['tradePrice'],currency)
+            text=row['description']
+
+            number_per=D(row['tradePrice'])
+            currency_cost=currency
+            cost = position.CostSpec(
+                number_per=price.number,
+                number_total=None,
+                currency=currency,
+                date=row['tradeDate'],
+                label=None,
+                merge=False)
+            
+            postings=[
+                    data.Posting(self.getAssetAccount(symbol),
+                        quantity, cost, None, None, None),
+                    data.Posting(self.getLiquidityAccount(currency),
+                        proceeds, None, None, None, None),
+                    data.Posting(self.getLiquidityAccount(currency_IBcommision),
+                        commission, None, None, None, None),
+                    data.Posting(self.getFeesAccount(currency_IBcommision),
+                                        minus(commission),None, None, None, None)
+                    ]
+
+            Shoppingbag.append(
+                data.Transaction(data.new_metadata('Buy',0),
+                            row['dateTime'].date(),
+                            self.flag,
+                            symbol,     # payee
+                            ' '.join(['BUY', quantity.to_string() , '@', price.to_string() ]),
+                            data.EMPTY_SET,
+                            data.EMPTY_SET,
+                            postings
+                            ))
+        return Shoppingbag
+
+    def Panic(self, sale, lots):
+        # OMG, IT is happening!!
+
+        Doom=[]
+        for idx, row in sale.iterrows():
+            # continue # debugging
+            currency = row['currency']
+            currency_IBcommision = row['ibCommissionCurrency']
+            symbol = row['symbol']
+            proceeds = amount.Amount(row['proceeds'].__round__(2),currency)
+            commission=amount.Amount((row['ibCommission'].__round__(2)),currency_IBcommision)
+            quantity = amount.Amount(row['quantity'],symbol)
+            price = amount.Amount(row['tradePrice'],currency)
+            text=row['description']
+            date=row['dateTime'].date()
+            number_per=D(row['tradePrice'])
+            currency_cost=currency
+                    
+            cost = position.CostSpec(
+                number_per=price,
+                number_total=None,
+                currency=currency,
+                date=None,
+                label=None,
+                merge=False)
+
+            # ok now let's find all the lots that we close today:
+            closing=lots[(lots['tradeDate']==date) & (lots['symbol']==symbol)]
+            # remove them from lots table, so we don't close them twice
+            lots.drop(index=closing.index,inplace=True)
+
+            lotpostings=[]
+            for i, clo in closing.iterrows(): 
+                quantity_clo=amount.Amount(clo['quantity'],symbol)
+                price_clo= amount.Amount(clo['tradePrice'],currency)
+                opendate=clo['openDateTime'].date()
+
+                cost = position.CostSpec(
+                    number_per=price_clo.number,
+                    number_total=None,
+                    currency=currency,
+                    date=opendate,
+                    label=None,
+                    merge=False)
+                lotpostings.append(
+                    data.Posting(self.getAssetAccount(symbol),
+                        quantity_clo, cost, price, None, None)
+                )
+
+
+            
+            postings=[
+                    data.Posting(self.getAssetAccount(symbol),
+                        quantity, None, price, None, None),
+                    data.Posting(self.getLiquidityAccount(currency),
+                        proceeds, None, None, None, None)
+                        ]  +  \
+                        lotpostings + \
+                    [data.Posting(self.getPNLAccount(symbol),
+                        None, None, None, None, None),
+                    data.Posting(self.getLiquidityAccount(currency_IBcommision),
+                        commission, None, None, None, None),
+                    data.Posting(self.getFeesAccount(currency_IBcommision),
+                                        minus(commission),None, None, None, None)
+                    ]
+
+            Doom.append(
+                data.Transaction(data.new_metadata('Buy',0),
+                            date,
+                            self.flag,
+                            symbol,     # payee
+                            ' '.join(['SELL', quantity.to_string() , '@', price.to_string() ]),
+                            data.EMPTY_SET,
+                            data.EMPTY_SET,
+                            postings
+                            ))    
+        return Doom 
+
+    def Balances(self,cr):
+        # generate Balance statements from IBKR Cash reports 
         # balances 
+        crTransactions = []
         for idx, row in cr.iterrows():
             currency=row['currency']
             if currency == 'BASE_SUMMARY':
@@ -355,11 +497,67 @@ class IBKRImporter(importer.ImporterProtocol):
                         ]
             meta=data.new_metadata('balance',0)
             
-            transactions.append(data.Balance(
+            crTransactions.append(data.Balance(
                             meta,
                             row['toDate'] + timedelta(days=1), # see tariochtools EC imp.
                             self.getLiquidityAccount(currency),
                             amount_,
                             None,
                             None))
-        return transactions
+        return crTransactions
+
+def CollapseTradeSplits(tr):
+    # to be implemented
+    """
+    This function collapses two trades into once if they have same date,symbol
+    and trade price
+    """
+    pass
+
+
+def isForex(symbol):
+    #retruns True if a transaction is a forex transaction. 
+    b=re.search("(\w{3})[.](\w{3})", symbol) # find something lile "USD.CHF"
+    if b==None: # no forex transaction, rather a normal stock transaction
+        return False
+    else:
+        return True
+
+def getForexCurrencies(symbol):
+    b=re.search("(\w{3})[.](\w{3})", symbol)
+    c=b.groups()
+    return [c[0],c[1]]
+
+
+class InvalidFormatError(Exception):
+    pass
+
+def fmt_number_de(value: str) -> Decimal:
+    #a fix for region specific number formats
+    thousands_sep = '.'
+    decimal_sep = ','
+
+    return Decimal(value.replace(thousands_sep, '').replace(decimal_sep, '.'))
+
+
+def DecimalOrZero(value):
+    # for string to number conversion with empty strings
+    try:
+        return Decimal(value)
+    except:
+        return Decimal(0.0)
+        
+def AmountAdd(A1,A2):
+    # add two amounts 
+    if A1.currency == A2.currency:
+        quant=A1.number+A2.number
+        return amount.Amount(quant,A1.currency)
+    else:
+        raise('Cannot add amounts of differnent currencies: {} and {}'.format(
+            A1.currency,A1.currency))
+
+def minus(A):
+    #a minus operator
+    return amount.Amount(-A.number,A.currency)
+
+    

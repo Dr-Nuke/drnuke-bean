@@ -16,17 +16,24 @@ from drnukebean.importer import ibkr
 # 'tradePrice', 'proceeds', 'currency','ibCommission', 'ibCommissionCurrency',
 # 'netCash','transactionType','dateTime']
 
+# I do not know a nice way to specify the account structure. This importer is 
+# based on my own. You can adjust the getXXXAccount() functions of the importer 
+# class to suit your needs
+
 
 IBKR = ibkr.IBKRImporter(
     Mainaccount = 'Assets:Invest:IB', # main IB account
-    divSuffix = 'Div', # suffix for dividend Account , like Assets:Invest:IB:VT:Div
-    WHTSuffix = 'WTax', # suffix for WHT
-    interestSuffix='Interest', # suffix for interest income
-    FeesSuffix='Fees', # suffix for fees & commisions
-    currency = 'CHF', # main currency
-    deposits = False, # set True if you want transactions for cash deposits
-    fpath = 'testIB/ibfq.pk' # use a pickle dump instead of the API, as it has
-                             # considerable loading times.
+    divSuffix = 'Div',          # suffix for dividend account, like
+                                # Assets:Invest:IB:VT:Div
+    WHTSuffix = 'WTax',         # suffix for WHT account
+    interestSuffix='Interest',  # suffix for interest income account
+    PnLSuffix='PnL',              # suffix for PnL Account
+    FeesSuffix='Fees',          # suffix for fees & commisions
+    currency = 'CHF',           # main currency
+    depositAccount = '',        # put in your checkings account if you want deposit transactions
+    fpath = 'testIB/ibfq.pk'    # use a pickle dump instead of the API, as it has
+                                # considerable loading times. Set to None for real
+                                # API Flex Query fetching
 )
     
 CONFIG = [IBKR]
