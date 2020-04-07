@@ -30,7 +30,6 @@ from beancount.core.number import Decimal
 from beancount.core import position
 from beancount.core.number import MISSING
 
-from tariochbctools.importers.general.priceLookup import PriceLookup
 
 
 class IBKRImporter(importer.ImporterProtocol):
