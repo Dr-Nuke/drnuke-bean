@@ -110,7 +110,7 @@ class IBKRImporter(importer.ImporterProtocol):
             return[]
 
         # get prices of existing transactions, in case we sell something
-        priceLookup = PriceLookup(existing_entries, config['baseCcy'])
+        #priceLookup = PriceLookup(existing_entries, config['baseCcy'])
 
 
         if self.filepath == None:
@@ -144,11 +144,10 @@ class IBKRImporter(importer.ImporterProtocol):
         tr=tabs['Trades']
         cr=tabs['CashReport']
 
-        # throw out IBKR jitter
+        # throw out IBKR jitter, mostly None
         ct.drop(columns=[col for col in ct if all(ct[col].isnull())],inplace=True)
         tr.drop(columns=[col for col in tr if all(tr[col].isnull())],inplace=True)
         cr.drop(columns=[col for col in cr if all(cr[col].isnull())],inplace=True)
-        
         transactions =  self.Trades(tr) + self.CashTransactions(ct) + self.Balances(cr)
                         
         return transactions
@@ -161,15 +160,38 @@ class IBKRImporter(importer.ImporterProtocol):
         arg ct: pandas DataFrame with the according data
         returns: list of Beancount transactions 
         """
+        if len(ct)==0: # catch case of empty dataframe
+            return []
+
         # first, separate different sorts of Data
         div = ct[ct['type']==CashAction.DIVIDEND]           # dividends only
         wht = ct[ct['type']==CashAction.WHTAX]              # WHT only
-        match = pd.merge(div, wht, on=['symbol','reportDate']) # matching WHT & div
-        dep = ct[ct['type']==CashAction.DEPOSITWITHDRAW]    # Deposits only
-        int_ = ct[ct['type']==CashAction.BROKERINTRCVD]     # interest only
+        if len(div) != len(wht):
+            warnings.warn('***** Warnging: number of Dividends {} ' +
+                    'mismatches number of WHTs {}. Skipping these Transactions' +  
+                    'Transaction'.format(len(div),len(wht)))
+            matches=[]
+        elif len(div) == 0:
+            # no dividends
+            matches = []
+        else:
+            match = pd.merge(div, wht, on=['symbol','reportDate']) # matching WHT & div
+            matches = self.Dividends(match)
+
         
+        dep = ct[ct['type']==CashAction.DEPOSITWITHDRAW]    # Deposits only
+        if len(dep)>0:
+            deps=self.Deposits(dep) 
+        else:
+            deps=[]
+
+        int_ = ct[ct['type']==CashAction.BROKERINTRCVD]     # interest only
+        if len(int_)>0:
+            ints=self.Interest(int_) 
+        else:
+            ints=[]
         # list of transactiosn with short name
-        ctTransactions =  self.Dividends(match) + self.Interest(int_) + self.Deposits(dep) 
+        ctTransactions =  matches + deps + ints 
 
         return ctTransactions
         
@@ -182,7 +204,7 @@ class IBKRImporter(importer.ImporterProtocol):
             currency=row['currency_x']
             currency_wht=row['currency_y']
             if currency != currency_wht:
-                warnings.warn('Warngin: Dividend currency {} ' +
+                warnings.warn('Warnging: Dividend currency {} ' +
                     'mismatches WHT currency {}. Skipping this' +  
                     'Transaction'.format(currency,currency_wht))
                 continue
@@ -200,7 +222,6 @@ class IBKRImporter(importer.ImporterProtocol):
             postings=[data.Posting(self.getDivIncomeAcconut(currency,
                                                             symbol),
                                     -amount_div, None, None, None, None),
-                                    
                         data.Posting(self.getWHTAccount(symbol),
                                     -amount_wht, None, None, None, None),
                         data.Posting(self.getLiquidityAccount(currency),
@@ -286,7 +307,8 @@ class IBKRImporter(importer.ImporterProtocol):
         arg tr: pandas DataFrame with the according data
         returns: list of Beancount transactions 
         """
-
+        if len(tr)==0: # catch the case of no transactions
+            return []
         fx = tr[tr['symbol'].apply(isForex)]                # forex transactions
         stocks = tr[~tr['symbol'].apply(isForex)]           # Stocks transactions
         
@@ -509,7 +531,7 @@ def CollapseTradeSplits(tr):
     # to be implemented
     """
     This function collapses two trades into once if they have same date,symbol
-    and trade price
+    and trade price. IB sometimes splits up trades.
     """
     pass
 
