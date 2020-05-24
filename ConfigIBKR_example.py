@@ -35,7 +35,7 @@ IBKR = ibkr.IBKRImporter(
     depositAccount = '',        # put in your checkings account if you want deposit transactions
     fpath = 'testIB/ibfq.pk'    # use a pickle dump instead of the API, as it has
                                 # considerable loading times. Set to None for real
-                                # API Flex Query fetching
+                                # API Flex Query fetching. used mainly for development.
 )
     
 CONFIG = [IBKR]
