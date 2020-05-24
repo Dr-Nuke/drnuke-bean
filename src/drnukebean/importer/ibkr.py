@@ -172,7 +172,7 @@ class IBKRImporter(importer.ImporterProtocol):
                     'Transaction'.format(len(div),len(wht)))
             matches=[]
         elif len(div) == 0:
-            # no dividends
+            # in case of no dividends, 
             matches = []
         else:
             match = pd.merge(div, wht, on=['symbol','reportDate']) # matching WHT & div
