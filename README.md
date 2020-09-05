@@ -1,9 +1,11 @@
 # drnuke-bean
 a repo for some beancount tool 
 
-## IBKR importer based on pandas, inspired by tariochbctools
+## Interactive Broker importer 
+based on pandas, inspired by tariochbctools
+This importer uses the IBKR FlexQuery service to fetch account information in API-style.
 
-dividends implemented. default output looks like
+default output looks like
 ```
 2020-03-31 * "VTI" "Dividend VTI"  
   ISIN: "US9220428588"  
@@ -12,5 +14,8 @@ dividends implemented. default output looks like
   Expensess:Invest:IB:VTI:WTax:USD    1.50 USD  
   Assets:Invest:IB:USD                8.50 USD  
 ```
-Insallation: make ibkr.py accessible for you python distro for importing. see the ConfigIBKR_example.py for some more guiding.
+Insallation: make ibkr.py accessible for you python distro for importing. See the ConfigIBKR_example.py for some more guiding
+
+## Postfinance Importer (Swiss)
+Two importers for Postfinance Giro account and credit card. Since Postfinance (as of 2020) does not offer API-like access, it requires manual download of bank statements in .csv format
 
