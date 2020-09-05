@@ -1,3 +1,4 @@
+# beancount importer for Postfinance.
 import csv
 import re
 from datetime import datetime, timedelta
@@ -6,6 +7,7 @@ from beancount.core import data
 from beancount.core.amount import Amount
 from beancount.ingest import importer
 from beancount.core.number import Decimal
+from . import util as u
 
 class InvalidFormatError(Exception):
     pass
