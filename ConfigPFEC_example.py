@@ -1,8 +1,8 @@
 # This is an example Config file for the Beancount Postfinance importer from Dr-Nuke
 # first we define some manual modifications to the individual transactions as 
 # a function that is later passed to the beancount parser.
-# Then we make the importer Instance. In this example, we also use the smart
-# importer from tariochtools
+# Then we make the importer Instance. Enter your IBAN and details there.
+# In this example, we also use the smart importer from tariochtools
 
 from smart_importer import apply_hooks, PredictPayees, PredictPostings
 from beancount.ingest import extract

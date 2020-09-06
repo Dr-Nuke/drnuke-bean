@@ -159,7 +159,7 @@ class PFGImporter(importer.ImporterProtocol):
                             None,
                             None))
                 
-                # make manual fixes here instead of after the list was made
+                # prepare/ make the transaction
                 d=dict(amount=amount,
                        account=self.account,
                        meta=meta,

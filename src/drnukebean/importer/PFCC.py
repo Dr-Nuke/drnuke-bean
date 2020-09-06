@@ -30,7 +30,12 @@ def DecimalOrZero(value):
         return Decimal(0.0)
         
 class PFCCImporter(importer.ImporterProtocol):
-    def __init__(self, ccnumber, account, currency='EUR', file_encoding='utf-8',manualFixes={}):
+    def __init__(self, 
+                    ccnumber, 
+                    account, 
+                    currency='EUR', 
+                    file_encoding='utf-8',
+                    manual_fixes=0):
 
         self.account = account
         self.currency = currency
@@ -43,7 +48,7 @@ class PFCCImporter(importer.ImporterProtocol):
         self._balance_amount = None
         self._balance_date = None
         self.delimiter=';'
-        self.manualFixes=manualFixes
+        self.manual_fixes=manual_fixes
 
         self.tags={'Saldovortrag':{'EN':'Balance brought forward',
                                    'DE':'Saldovortrag'}}
@@ -137,11 +142,15 @@ class PFCCImporter(importer.ImporterProtocol):
 
             # Data entries
             for i,row in enumerate(reader):
-                meta = data.new_metadata(file_.name, i)
                 if len(row)==0: # "end" of bank statment
                     break
                 if row[1]=='Total': # ignore this entry
                     continue
+                # skip credit card bill or charge transaction, as they already appear on the giro account
+                if ('CH-DD ZAHLUNG' in row[1]) or ('ONLINE LADUNG KARTENKONTO' in row[1]):
+                    continue
+
+                meta = data.new_metadata(file_.name, i)
                 credit=DecimalOrZero(row[2])
                 debit=DecimalOrZero(row[3]) 
                 total=credit-debit # mind PF sign convention
@@ -161,120 +170,31 @@ class PFCCImporter(importer.ImporterProtocol):
                             balance,
                             None,
                             None))
-                else:    
-                # make statement
-                    entry=ManualFixes(account=self.account,
-                            amount=amount,
-                           meta=meta,
-                           date=date,
-                           flag=self.FLAG,
-                           payee='',
-                           narration=description)
-                    if entry !=None:
-                        entries.append(entry)
+                else:    # if not balance, it's a transaction
+                # prepare/ make statement
+                    d=dict(amount=amount,
+                        account=self.account,
+                        meta=meta,
+                        flag=self.FLAG,
+                        narration=description,
+                        payee='',
+                        date=date,
+                        )
+                    
+                    d=self.manual_fixes(d)
+
+                    trans=data.Transaction(d['meta'],
+                                d['date'],
+                                d['flag'],
+                                d['payee'],
+                                d['narration'],
+                                data.EMPTY_SET,
+                                data.EMPTY_SET,
+                                d['postings']
+                                )
+                    entries.append(trans)
                
         return entries
 
-def ManualFixes(account,
-                amount,
-                meta,
-                date,
-                flag,
-                payee,
-                narration):
-    if bool(re.search('CH-DD ZAHLUNG', narration, re.IGNORECASE)):
-        return None # duplicate prevention
-    # manually fix some common transactions
-    postings=[data.Posting(account,
-                         amount,
-                         None,
-                         None,
-                         None,
-                         None)]
-    
-#     fixes=['coop':{'narration':'Food','payee':'Coop'},
-#            'migros':{'narration':'Food','payee':'migros'},
-#           'KONTOFÜHRUNG':{'narration':'Kontogebühr ','payee':'PostFinance'},
-#           'BONUS POSTFINANCE':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'}]
-    
-    # SBB
-    if bool(re.search('SBB', narration, re.IGNORECASE)):
-        narration='Bahnticket'
-        payee='SBB'
-        flag='!' # add individual metadata
 
-    # ZVV
-    if bool(re.search('ZVV', narration, re.IGNORECASE)):
-        narration='Bilet'
-        payee='ZVV'
-        flag='!' # add individual metadata   
-    
-    # coop
-    if bool(re.search('coop', narration, re.IGNORECASE)):
-        narration='Food'
-        payee='Coop'
-        
-    # migros    
-    if bool(re.search('Migros', narration, re.IGNORECASE)):
-        narration='Food'
-        payee='Migros'
-        
-     # Giro    
-    if bool(re.search('KONTOFÜHRUNG', narration, re.IGNORECASE)):
-        narration='Kontogebühr'
-        payee='PostFinance'   
-        
-    # CC bill    
-    if bool(re.search('DD-BASISLASTSCHRIFT', narration, re.IGNORECASE)):
-        narration='Kreditkartenrechnung'
-        payee='self'      
-        
-    # BARGELDBEZUG 
-    if bool(re.search('BARGELDBEZUG ', narration, re.IGNORECASE)):
-        narration='abheben'
-        payee='self'  
-        
-    # SwissMobility 
-    if bool(re.search('SwissMobility', narration, re.IGNORECASE)):
-        narration='SwissMobility'
-        payee='SwissMobility'    
-        
-    # KV
-    if bool(re.search('Assura', narration, re.IGNORECASE)):
-        narration='Krankenversicherung'
-        payee='Assura' 
-        flag='!'
-        
-    # Thomann
-    if bool(re.search('Thomann', narration, re.IGNORECASE)):
-        narration='Thomann'
-        payee='Thomann'
-        flag='!'
-    
-    #les framboises
-    if bool(re.search('les framboises', narration, re.IGNORECASE)):
-        narration='Framboises'
-        payee='Framboises'
-        flag='!'
-    
-        
-        
-        
-        
-    return data.Transaction(meta,
-                            date,
-                            flag,
-                            payee,
-                            narration,
-                            data.EMPTY_SET,
-                            data.EMPTY_SET,
-                            postings
-                            )
-
-    
-    
+   
