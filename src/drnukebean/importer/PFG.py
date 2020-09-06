@@ -7,7 +7,6 @@ from beancount.core import data
 from beancount.core.amount import Amount
 from beancount.ingest import importer
 from beancount.core.number import Decimal
-from . import util as u
 
 class InvalidFormatError(Exception):
     pass
@@ -31,7 +30,12 @@ class PFGImporter(importer.ImporterProtocol):
     """
     Beancount Importer for the Postfinance giro account bank statements
     """
-    def __init__(self, iban, account, currency='EUR', file_encoding='utf-8',manualFixes={}):
+    def __init__(self, 
+                iban, 
+                account,
+                currency='EUR',
+                file_encoding='utf-8',
+                manual_fixes=None):
 
         self.account = account
         self.currency = currency
@@ -44,9 +48,8 @@ class PFGImporter(importer.ImporterProtocol):
         self._balance_amount = None
         self._balance_date = None
         self.delimiter=';'
-        self.manualFixes=manualFixes
+        self.manual_fixes=manual_fixes
         
-
     def name(self):
         return 'PFG {}'.format(self.__class__.__name__)
 
@@ -146,7 +149,7 @@ class PFGImporter(importer.ImporterProtocol):
                 description = row[1]
                 # pdb.set_trace()
                 # get closing balance, if available
-                if (i==0) & (row[5]!='') : 
+                if (i==0) & (row[5]!='') : # i just happens that the first trasaction contains the latest balance
                     entries.append(
                         data.Balance(
                             meta,
@@ -155,109 +158,29 @@ class PFGImporter(importer.ImporterProtocol):
                             balance,
                             None,
                             None))
-                    
-                # make statement
-                entries.append(ManualFixes(account=self.account,
-                            amount=amount,
-                           meta=meta,
-                           date=date,
-                           flag=self.FLAG,
-                           payee='',
-                           narration=description))
                 
-        return entries
+                # make manual fixes here instead of after the list was made
+                d=dict(amount=amount,
+                       account=self.account,
+                       meta=meta,
+                       flag=self.FLAG,
+                       narration=description,
+                       payee='',
+                       date=date,
+                       )
+                
+                d=self.manual_fixes(d)
 
-def ManualFixes(account,
-                amount,
-                meta,
-                date,
-                flag,
-                payee,
-                narration):
-    # manually fix some common transactions
-    postings=[data.Posting(account,
-                         amount,
-                         None,
-                         None,
-                         None,
-                         None)]
-    
-#     fixes=['coop':{'narration':'Food','payee':'Coop'},
-#            'migros':{'narration':'Food','payee':'migros'},
-#           'KONTOFÜHRUNG':{'narration':'Kontogebühr ','payee':'PostFinance'},
-#           'BONUS POSTFINANCE':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'},
-#           'DD-BASISLASTSCHRIFT':{'narration':'Kreditkartenrechnung  ','payee':'self'}]
-    
-    # general shortign
-    general='KAUF/DIENSTLEISTUNG VOM \d\d.\d\d.\d{4} KARTEN NR. \w{8} '
-    if bool(re.search(general, narration, re.IGNORECASE)):
-        narration=re.sub(general,'',narration)
-    
-    # coop
-    if bool(re.search('coop', narration, re.IGNORECASE)):
-        narration='Food'
-        payee='Coop'
-        
-    # migros    
-    if bool(re.search('Migros', narration, re.IGNORECASE)):
-        narration='Food'
-        payee='Migros'
-        
-     # Giro    
-    if bool(re.search('KONTOFÜHRUNG', narration, re.IGNORECASE)):
-        narration='Kontogebühr'
-        payee='PostFinance'   
-        
-    # CC bill    
-    if bool(re.search('DD-BASISLASTSCHRIFT', narration, re.IGNORECASE)):
-        narration='Kreditkartenrechnung'
-        payee='self'      
-        
-    # BARGELDBEZUG 
-    if bool(re.search('BARGELDBEZUG ', narration, re.IGNORECASE)):
-        narration='abheben'
-        payee='self'  
-        
-    # SwissMobility 
-    if bool(re.search('SwissMobility', narration, re.IGNORECASE)):
-        narration='SwissMobility'
-        payee='SwissMobility'    
-        
-    # KV
-    if bool(re.search('Assura', narration, re.IGNORECASE)):
-        narration='Krankenversicherung'
-        payee='Assura' 
-        flag='!'
-        
-    # Thomann
-    if bool(re.search('Thomann', narration, re.IGNORECASE)):
-        narration='Thomann'
-        payee='Thomann'
-        flag='!'
-    
-    #les framboises
-    if bool(re.search('les framboises', narration, re.IGNORECASE)):
-        narration='Framboises'
-        payee='Framboises'
-        flag='!'
-    
-        
-        
-        
-        
-    return data.Transaction(meta,
-                            date,
-                            flag,
-                            payee,
-                            narration,
+                trans=data.Transaction(d['meta'],
+                            d['date'],
+                            d['flag'],
+                            d['payee'],
+                            d['narration'],
                             data.EMPTY_SET,
                             data.EMPTY_SET,
-                            postings
+                            d['postings']
                             )
-
+                entries.append(trans)
+        return entries
     
-    
+   
