@@ -71,7 +71,7 @@ class IBKRImporter(importer.ImporterProtocol):
     
     def getDivIncomeAcconut(self,currency,symbol):
         # Income:Invest:IB:VTI:Div
-        return ':'.join([self.Mainaccount.replace('Assets','Income') , symbol , currency])
+        return ':'.join([self.Mainaccount.replace('Assets','Income') , symbol , self.divSuffix])
 
     def getInterestIncomeAcconut(self,currency):
         # Income:Invest:IB:USD
