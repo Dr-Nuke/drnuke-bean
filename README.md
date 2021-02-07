@@ -25,12 +25,17 @@ A plugin to distribute singele tansactions over a period of time.
 I.e. distrbute an end-of-year Investment-account statement over the months of that year.
 syntax is based on pandas.date_range, so you can use basic time series as provided with https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.date_range.html
 
-Example: 
+use with
+```
+plugin "drnukebean.plugins.spreading"
+```
+
+For example, distribute a quartely PnL statement over the last 3 months: 
 ```
 2020-12-31 * "MyInvestmentAccount" "PnL"
-  p_spreading_frequency: "M"
-  p_spreading_start: "2020-10-01"
-  p_spreading_times: "3"
+  p_spreading_frequency: "M"         ; pd.date_range() flag for 'monthly'
+  p_spreading_start: "2020-10-01"    ; makes October the start month
+  p_spreading_times: "3"             ; tells the plugin to slpit into 3 transactions
   Assets:MyInvestmentAccount:CHF   1000 CHF
   Income:MyInvestmentAccount:PnL  -1000 CHF
 ```
