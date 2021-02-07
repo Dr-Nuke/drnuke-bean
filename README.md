@@ -19,3 +19,43 @@ Insallation: make ibkr.py accessible for you python distro for importing. See th
 ## Postfinance Importer (Swiss)
 Two importers for Postfinance Giro account and credit card. Since Postfinance (as of 2020) does not offer API-like access, it requires manual download of bank statements in .csv format
 
+
+## spread plugin
+A plugin to distribute singele tansactions over a period of time.
+I.e. distrbute an end-of-year Investment-account statement over the months of that year.
+syntax is based on pandas.date_range, so you can use basic time series as provided with https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.date_range.html
+
+Example: 
+```
+2020-12-31 * "MyInvestmentAccount" "PnL"
+  p_spreading_frequency: "M"
+  p_spreading_start: "2020-10-01"
+  p_spreading_times: "3"
+  Assets:MyInvestmentAccount:CHF   1000 CHF
+  Income:MyInvestmentAccount:PnL  -1000 CHF
+```
+becomes 
+```
+
+2020-12-31 * "MyInvestmentAccount" "PnL"
+  p_spreading_frequency: "M"
+  p_spreading_start: "2020-10-01"
+  p_spreading_times: "3"
+  Assets:Forderungen:MyInvestmentAccount:PnL  -1000 CHF
+  Assets:MyInvestmentAccount:CHF               1000 CHF
+
+2020-10-31 * "MyInvestmentAccount" "PnL"
+  p_spreading: "split 1000 into 3 chunks, M"
+  Income:MyInvestmentAccount:PnL              -333.33 CHF
+  Assets:Forderungen:MyInvestmentAccount:PnL   333.33 CHF
+
+2020-11-30 * "MyInvestmentAccount" "PnL"
+  p_spreading: "split 1000 into 3 chunks, M"
+  Income:MyInvestmentAccount:PnL              -333.33 CHF
+  Assets:Forderungen:MyInvestmentAccount:PnL   333.33 CHF
+
+2020-12-31 * "MyInvestmentAccount" "PnL"
+  p_spreading: "split 1000 into 3 chunks, M"
+  Income:MyInvestmentAccount:PnL              -333.34 CHF
+  Assets:Forderungen:MyInvestmentAccount:PnL   333.34 CHF
+```

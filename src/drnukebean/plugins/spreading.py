@@ -103,7 +103,8 @@ def spread(entry):
                           units = amount,
                           cost=None, price=None, flag=None, meta=None)
         
-        meta = {key:val for key, val in entry.meta.items()}
+        dropkeys = ['p_spreading_times','p_spreading_start','p_spreading_frequency']
+        meta = {key:val for key, val in entry.meta.items() if key not in dropkeys}
         meta.update({'p_spreading': f"split {value} into {n_divides} chunks, {entry.meta['p_spreading_frequency']}"})
         trans = data.Transaction(meta=meta,
                       date=date,
