@@ -47,21 +47,21 @@ becomes
   p_spreading_frequency: "M"
   p_spreading_start: "2020-10-01"
   p_spreading_times: "3"
-  Assets:Forderungen:MyInvestmentAccount:PnL  -1000 CHF
+  Assets:Receivables:MyInvestmentAccount:PnL  -1000 CHF
   Assets:MyInvestmentAccount:CHF               1000 CHF
 
 2020-10-31 * "MyInvestmentAccount" "PnL"
   p_spreading: "split 1000 into 3 chunks, M"
   Income:MyInvestmentAccount:PnL              -333.33 CHF
-  Assets:Forderungen:MyInvestmentAccount:PnL   333.33 CHF
+  Assets:Receivables:MyInvestmentAccount:PnL   333.33 CHF
 
 2020-11-30 * "MyInvestmentAccount" "PnL"
   p_spreading: "split 1000 into 3 chunks, M"
   Income:MyInvestmentAccount:PnL              -333.33 CHF
-  Assets:Forderungen:MyInvestmentAccount:PnL   333.33 CHF
+  Assets:Receivables:MyInvestmentAccount:PnL   333.33 CHF
 
 2020-12-31 * "MyInvestmentAccount" "PnL"
   p_spreading: "split 1000 into 3 chunks, M"
   Income:MyInvestmentAccount:PnL              -333.34 CHF
-  Assets:Forderungen:MyInvestmentAccount:PnL   333.34 CHF
+  Assets:Receivables:MyInvestmentAccount:PnL   333.34 CHF
 ```
