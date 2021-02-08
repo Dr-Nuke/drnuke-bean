@@ -27,7 +27,7 @@ syntax is based on pandas.date_range, so you can use basic time series as provid
 
 use it within your ledger with
 ```
-plugin "drnukebean.plugins.spreading" "{'liability_acc_base': 'Assets:Liabilities:'}"
+plugin "drnukebean.plugins.spreading" "{'liability_acc_base': 'Assets:Receivables:'}"
 ```
 where the the parameter specifies the stem of the account that wil hold the temporary balance.
 
