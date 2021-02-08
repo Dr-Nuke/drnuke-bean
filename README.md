@@ -25,10 +25,11 @@ A plugin to distribute singele tansactions over a period of time.
 I.e. distrbute an end-of-year Investment-account statement over the months of that year.
 syntax is based on pandas.date_range, so you can use basic time series as provided with https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.date_range.html
 
-use with
+use it within your ledger with
 ```
-plugin "drnukebean.plugins.spreading"
+plugin "drnukebean.plugins.spreading" "{'liability_acc_base': 'Assets:Liabilities:'}"
 ```
+where the the parameter specifies the stem of the account that wil hold the temporary balance.
 
 For example, distribute a quartely PnL statement over the last 3 months: 
 ```
