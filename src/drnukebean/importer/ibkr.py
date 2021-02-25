@@ -45,7 +45,8 @@ class IBKRImporter(importer.ImporterProtocol):
                 FeesSuffix='Fees',
                 PnLSuffix='PnL',
                 fpath=None,  # 
-                depositAccount=''
+                depositAccount='',
+                suppressClosedLotPrice=False
                 ):
 
         self.Mainaccount = Mainaccount # main IB account in beancount
@@ -59,7 +60,8 @@ class IBKRImporter(importer.ImporterProtocol):
             # if flex query should not be used online (loading time...)
         self.depositAccount = depositAccount # Cash deposits are usually already covered
             # by checkings account statements. If you want anyway the 
-            # deposit transactions, provide a True value 
+            # deposit transactions, provide a True value
+        self.suppressClosedLotPrice=suppressClosedLotPrice
         self.flag = '*' 
 
     def identify(self, file):
@@ -446,7 +448,7 @@ class IBKRImporter(importer.ImporterProtocol):
                 clo=lots.loc[idx+1]
                 if -clo['quantity'] == row['quantity'] and clo['symbol'] == row['symbol']:
                     cost = position.CostSpec(
-                        number_per=clo['tradePrice'],
+                        number_per=0 if self.suppressClosedLotPrice else clo['tradePrice'],
                         number_total=None,
                         currency=clo['currency'],
                         date=clo['openDateTime'].date(),

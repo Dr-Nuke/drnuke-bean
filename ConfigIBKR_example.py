@@ -33,6 +33,8 @@ IBKR = ibkr.IBKRImporter(
     FeesSuffix='Fees',          # suffix for fees & commisions
     currency = 'CHF',           # main currency
     depositAccount = '',        # put in your checkings account if you want deposit transactions
+    suppressClosedLotPrice=False # Sometimes reports IB an inaccurate lot price.
+                                 # In this case it is better to suppress it and let beancount to match lot
     fpath = 'testIB/ibfq.pk'    # use a pickle dump instead of the API, as it has
                                 # considerable loading times. Set to None for real
                                 # API Flex Query fetching. used mainly for development.
