@@ -368,7 +368,7 @@ class IBKRImporter(importer.ImporterProtocol):
         stocktrades = stocks[stocks['levelOfDetail']=='EXECUTION'] # actual trades
         buy=stocktrades[stocktrades['buySell'].apply(lambda x : x.name) == 'BUY'] # purchases
         sale=stocktrades[stocktrades['buySell'].apply(lambda x : x.name) == 'SELL'] # sales
-        lots=stocks[stocks['levelOfDetail']=='CLOSED_LOT'].reset_index(drop=True)  # closed lots
+        lots=stocks[stocks['levelOfDetail']=='CLOSED_LOT']  # closed lots; keep index to match with sales
 
         stockTransactions= self.Panic(sale,lots) + self.Shopping(buy)  
         
@@ -440,39 +440,36 @@ class IBKRImporter(importer.ImporterProtocol):
             number_per=D(row['tradePrice'])
             currency_cost=currency
                     
-            cost = position.CostSpec(
-                number_per=price,
-                number_total=None,
-                currency=currency,
-                date=None,
-                label=None,
-                merge=False)
+            # Closed lot row follows sell row
+            cost=None
+            try:
+                clo=lots.loc[idx+1]
+                if -clo['quantity'] == row['quantity'] and clo['symbol'] == row['symbol']:
+                    cost = position.CostSpec(
+                        number_per=clo['tradePrice'],
+                        number_total=None,
+                        currency=clo['currency'],
+                        date=clo['openDateTime'].date(),
+                        label=None,
+                        merge=False)
+            except:
+                pass
 
-            # ok now let's find all the lots that we close today:
-            closing=lots[(lots['tradeDate']==date) & (lots['symbol']==symbol)]
-            # remove them from lots table, so we don't close them twice
-            lots.drop(index=closing.index,inplace=True)
-
-            lotpostings=[]
-            for i, clo in closing.iterrows(): 
-                quantity_clo=amount.Amount(clo['quantity'],symbol)
-                price_clo= amount.Amount(clo['tradePrice'],currency)
-                opendate=clo['openDateTime'].date()
-
-                cost = position.CostSpec(
-                    number_per=price_clo.number,
+            if cost is None:
+                # provide an empty {} cost spec (otherwise beancount can't match the lot)
+                cost=position.CostSpec(
+                    number_per=None,
                     number_total=None,
-                    currency=currency,
-                    date=opendate,
+                    currency=None,
+                    date=None,
                     label=None,
                     merge=False)
-                lotpostings.append(
-                    data.Posting(self.getAssetAccount(symbol),
-                        minus(quantity_clo), cost, price, None, None)
-                )
-
-
             
+            lotpostings = [
+                data.Posting(self.getAssetAccount(symbol),
+                             amount.Amount(-clo['quantity'],clo['symbol']), cost, price, None, None)
+            ]
+
             postings=[
                     # data.Posting(self.getAssetAccount(symbol),  # this first posting is probably wrong
                         # quantity, None, price, None, None),
