@@ -192,11 +192,44 @@ class IBKRImporter(importer.ImporterProtocol):
             ints=self.Interest(int_) 
         else:
             ints=[]
+
+        fee = ct[ct['type']==CashAction.FEES] # Fees only
+        if len(fee)>0:
+            fees=self.Fee(fee)
+        else:
+            fees=[]
         # list of transactiosn with short name
-        ctTransactions =  matches + deps + ints 
+        ctTransactions =  matches + deps + ints + fees
 
         return ctTransactions
+
+    def Fee(self,fee):
+        # calculates fees from IBKR data
+        feeTransactions=[]
+        for idx, row in fee.iterrows():
+            currency=row['currency']
+            amount_=amount.Amount(row['amount'],currency)
+            text=row['description']
+            month=re.findall('\w{3} \d{4}',text)[0]
+            
+            # make the postings, two for fees
+            postings=[data.Posting(self.getFeesAccount(currency),
+                                   -amount_, None, None, None, None),
+                      data.Posting(self.getLiquidityAccount(currency),
+                                   amount_,None, None, None, None)]
+            meta=data.new_metadata(__file__,0, {}) # actually no metadata
+            feeTransactions.append(
+                data.Transaction(meta,
+                                 row['reportDate'],
+                                 self.flag,
+                                 'IB',     # payee
+                                 ' '.join(['Fee', currency , month]),
+                                 data.EMPTY_SET,
+                                 data.EMPTY_SET,
+                                 postings))
+        return feeTransactions
         
+
     def Dividends(self,match):
         # this function crates Dividend transactions from IBKR data
         # make dividend & WHT transactions
