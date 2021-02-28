@@ -166,8 +166,21 @@ class IBKRImporter(importer.ImporterProtocol):
             return []
 
         # first, separate different sorts of Data
-        div = ct[ct['type']==CashAction.DIVIDEND]           # dividends only
-        wht = ct[ct['type']==CashAction.WHTAX]              # WHT only
+        # Cash dividend is split from payment in lieu of a dividend.
+        # Match them accordingly with the corresponding wht rows.
+        # Make a copy of dataframe prior to append a column to avoid SettingWithCopyWarning
+        div = ct[ct['type'].map(lambda t:t==CashAction.DIVIDEND
+                                or t==CashAction.PAYMENTINLIEU)].copy()   # dividends only (both cash and payment in lieu of d.)
+        div['__divtype__'] = div['type'] # Duplicate column to match later with wht
+
+        # Make a copy of dataframe prior to append a column to avoid SettingWithCopyWarning
+        wht = ct[ct['type']==CashAction.WHTAX].copy()              # WHT only
+        
+        # create pseudo colum __divtype__ to match to div's __divtype__
+        wht['__divtype__'] = wht['description'].map(lambda d:
+            CashAction.PAYMENTINLIEU if re.match('.*payment in lieu of dividend', d, re.IGNORECASE)
+            else CashAction.DIVIDEND)
+        
         if len(div) != len(wht):
             warnings.warn('***** Warnging: number of Dividends {} ' +
                     'mismatches number of WHTs {}. Skipping these Transactions' +  
@@ -177,9 +190,8 @@ class IBKRImporter(importer.ImporterProtocol):
             # in case of no dividends, 
             matches = []
         else:
-            match = pd.merge(div, wht, on=['symbol','reportDate']) # matching WHT & div
+            match = pd.merge(div, wht, on=['symbol','reportDate', '__divtype__']) # matching WHT & div
             matches = self.Dividends(match)
-
         
         dep = ct[ct['type']==CashAction.DEPOSITWITHDRAW]    # Deposits only
         if len(dep)>0:
@@ -217,8 +229,10 @@ class IBKRImporter(importer.ImporterProtocol):
 
             text=row['description_x']
             isin=re.findall('([a-zA-Z]{2}[0-9]{10})',text)[0]
-            pershare=re.search('(\d*[.]\d*)(\D*)(PER SHARE)', 
-                                text, re.IGNORECASE).group(1)
+            pershare_match=re.search('(\d*[.]\d*)(\D*)(PER SHARE)', 
+                                     text, re.IGNORECASE)
+            # payment in lieu of a dividend does not have a PER SHARE in description
+            pershare=pershare_match.group(1) if pershare_match else ''
             
             # make the postings, three for dividend/ wht transactions
             postings=[data.Posting(self.getDivIncomeAcconut(currency,
