@@ -199,7 +199,8 @@ class IBKRImporter(importer.ImporterProtocol):
         else:
             deps=[]
 
-        int_ = ct[ct['type']==CashAction.BROKERINTRCVD]     # interest only
+        int_ = ct[ct['type'].map(lambda t: t==CashAction.BROKERINTRCVD
+                                 or t==CashAction.BROKERINTPAID)]     # interest only
         if len(int_)>0:
             ints=self.Interest(int_) 
         else:
@@ -268,6 +269,7 @@ class IBKRImporter(importer.ImporterProtocol):
             month=re.findall('\w{3}-\d{4}',text)[0]
             
             # make the postings, two for interest payments
+            # received and paid interests are booked on the same account
             postings=[data.Posting(self.getInterestIncomeAcconut(currency),
                                     -amount_, None, None, None, None),
                         data.Posting(self.getLiquidityAccount(currency),
