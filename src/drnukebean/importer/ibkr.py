@@ -19,7 +19,7 @@ import numpy as np
 import yaml
 from os import path
 from ibflex import client, parser, Types
-from ibflex.enums import CashAction
+from ibflex.enums import CashAction, BuySell
 
 from beancount.query import query
 from beancount.parser import options
@@ -417,8 +417,10 @@ class IBKRImporter(importer.ImporterProtocol):
         # return the stocks transactions
 
         stocktrades = stocks[stocks['levelOfDetail']=='EXECUTION'] # actual trades
-        buy=stocktrades[stocktrades['buySell'].apply(lambda x : x.name) == 'BUY'] # purchases
-        sale=stocktrades[stocktrades['buySell'].apply(lambda x : x.name) == 'SELL'] # sales
+        buy=stocktrades[(stocktrades['buySell'] == BuySell.BUY) |        # purchases, including cancelled ones
+                        (stocktrades['buySell'] == BuySell.CANCELBUY)]   # and the cancellation transactions to keep balance
+        sale=stocktrades[(stocktrades['buySell'] == BuySell.SELL) |      # sales, including cancelled ones
+                         (stocktrades['buySell'] == BuySell.CANCELSELL)] # and the cancellation transactions to keep balance
         lots=stocks[stocks['levelOfDetail']=='CLOSED_LOT']  # closed lots; keep index to match with sales
 
         stockTransactions= self.Panic(sale,lots) + self.Shopping(buy)  
