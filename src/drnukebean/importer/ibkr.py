@@ -493,36 +493,38 @@ class IBKRImporter(importer.ImporterProtocol):
             date=row['dateTime'].date()
             number_per=D(row['tradePrice'])
             currency_cost=currency
-                    
-            # Closed lot row follows sell row
-            cost=None
-            try:
-                clo=lots.loc[idx+1]
-                if -clo['quantity'] == row['quantity'] and clo['symbol'] == row['symbol']:
-                    cost = position.CostSpec(
-                        number_per=0 if self.suppressClosedLotPrice else clo['tradePrice'],
-                        number_total=None,
-                        currency=clo['currency'],
-                        date=clo['openDateTime'].date(),
-                        label=None,
-                        merge=False)
-            except:
-                pass
 
-            if cost is None:
-                # provide an empty {} cost spec (otherwise beancount can't match the lot)
-                cost=position.CostSpec(
-                    number_per=None,
+            # Closed lot rows (potentially multiple) follow sell row
+            lotpostings = []
+            sum_lots_quantity = 0
+            # mylots: lots closed by sale 'row'
+            # symbol must match; begin at the row after the sell row
+            # we do not know the number of lot rows; stop iteration if quantity is enough
+            mylots=lots[(lots['symbol']==row['symbol']) & (lots.index > idx)]
+            for li, clo in mylots.iterrows():
+                sum_lots_quantity += clo['quantity']
+                if sum_lots_quantity > -row['quantity']:
+                    # oops, too many lots (warning issued below)
+                    break
+
+                cost = position.CostSpec(
+                    number_per=0 if self.suppressClosedLotPrice else clo['tradePrice'],
                     number_total=None,
-                    currency=None,
-                    date=None,
+                    currency=clo['currency'],
+                    date=clo['openDateTime'].date(),
                     label=None,
                     merge=False)
-            
-            lotpostings = [
-                data.Posting(self.getAssetAccount(symbol),
-                             amount.Amount(-clo['quantity'],clo['symbol']), cost, price, None, None)
-            ]
+
+                lotpostings.append(data.Posting(self.getAssetAccount(symbol),
+                        amount.Amount(-clo['quantity'],clo['symbol']), cost, price, None, None))
+
+                if sum_lots_quantity == -row['quantity']:
+                    # Exact match is expected:
+                    # all lots found for this sell transaction
+                    break
+
+            if sum_lots_quantity != -row['quantity']:
+                warnings.warn(f"Lots matching failure: sell index={idx}")
 
             postings=[
                     # data.Posting(self.getAssetAccount(symbol),  # this first posting is probably wrong
