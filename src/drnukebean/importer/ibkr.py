@@ -115,7 +115,7 @@ class IBKRImporter(importer.ImporterProtocol):
         #priceLookup = PriceLookup(existing_entries, config['baseCcy'])
 
 
-        if self.filepath == None:
+        if self.filepath is None:
             # get the report from IB. might take a while, when IB is queuing due to 
             # traffic
             try:
