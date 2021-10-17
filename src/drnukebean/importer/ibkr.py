@@ -20,6 +20,7 @@ import yaml
 from os import path
 from ibflex import client, parser, Types
 from ibflex.enums import CashAction, BuySell
+from ibflex.client import ResponseCodeError
 
 from beancount.query import query
 from beancount.parser import options
@@ -124,6 +125,10 @@ class IBKRImporter(importer.ImporterProtocol):
                 # the data due to busy servers
                 response = client.download(token, queryId)
                 statement = parser.parse(response)
+            except ResponseCodeError as E:
+                 print(E)
+                 print('aborting.')
+                 return[]
             except:
                 warnings.warn('could not fetch IBKR Statement. exiting.')
                 # another option would be to try again
