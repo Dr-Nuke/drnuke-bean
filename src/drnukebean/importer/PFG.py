@@ -7,6 +7,7 @@ from beancount.core import data
 from beancount.core.amount import Amount
 from beancount.ingest import importer
 from beancount.core.number import Decimal
+from .util import remove_spaces
 
 class InvalidFormatError(Exception):
     pass
@@ -33,11 +34,16 @@ class PFGImporter(importer.ImporterProtocol):
     def __init__(self, 
                 iban, 
                 account,
+                balance_account=None,
                 currency='EUR',
                 file_encoding='utf-8',
                 manual_fixes=None):
 
         self.account = account
+        if balance_account is not None:
+            self.balance_account = balance_account
+        else:
+            self.balance_account = account
         self.currency = currency
         self.file_encoding = file_encoding
         self.language=''
@@ -154,7 +160,7 @@ class PFGImporter(importer.ImporterProtocol):
                         data.Balance(
                             meta,
                             date + timedelta(days=1), # see tariochtools EC imp.
-                            self.account,
+                            self.balance_account,
                             balance,
                             None,
                             None))
@@ -174,8 +180,8 @@ class PFGImporter(importer.ImporterProtocol):
                 trans=data.Transaction(d['meta'],
                             d['date'],
                             d['flag'],
-                            d['payee'],
-                            d['narration'],
+                            remove_spaces(d['payee']),
+                            remove_spaces(d['narration']),
                             data.EMPTY_SET,
                             data.EMPTY_SET,
                             d['postings']

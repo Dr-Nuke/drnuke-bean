@@ -9,6 +9,7 @@ from beancount.core import data
 from beancount.core.amount import Amount
 from beancount.ingest import importer
 from beancount.core.number import Decimal
+from .util import remove_spaces
 
 import pdb
 
@@ -186,8 +187,8 @@ class PFCCImporter(importer.ImporterProtocol):
                     trans=data.Transaction(d['meta'],
                                 d['date'],
                                 d['flag'],
-                                d['payee'],
-                                d['narration'],
+                                remove_spaces(d['payee']),
+                                remove_spaces(d['narration']),
                                 data.EMPTY_SET,
                                 data.EMPTY_SET,
                                 d['postings']
