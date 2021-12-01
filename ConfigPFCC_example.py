@@ -70,7 +70,8 @@ PFCC_ = PFCC.PFCCImporter(
     'Assets:Liq:PF:Kreditkarte',
     currency='CHF',
     file_encoding='ISO-8859-1',
-    manual_fixes = automatic_fixes
+    manual_fixes = automatic_fixes,
+    filetypes = ['.csv'] # optional; empty list will allow all filetypes
     )
 if smart: apply_hooks(PFCC_, [PredictPostings()])
 
