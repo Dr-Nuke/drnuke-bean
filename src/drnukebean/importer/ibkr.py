@@ -531,7 +531,7 @@ class IBKRImporter(importer.ImporterProtocol):
                     break
 
                 cost = position.CostSpec(
-                    number_per=0 if self.suppressClosedLotPrice else clo['tradePrice'],
+                    number_per=0 if self.suppressClosedLotPrice else round(clo['tradePrice'],2),
                     number_total=None,
                     currency=clo['currency'],
                     date=clo['openDateTime'].date(),

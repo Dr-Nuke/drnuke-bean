@@ -76,7 +76,6 @@ class PFCCImporter(importer.ImporterProtocol):
 
     def checkForAccount(self, file_):
         # find amatch between the config's cc number and the parsed file's one
-
         # first check if the file is of a desired file type. this prevents searching
         # pdf's and jpg's in case we just want csv's.
         if (len(self.filetypes) > 0) and (not (Path(file_.name).suffix.lower() in self.filetypes)):
@@ -84,19 +83,24 @@ class PFCCImporter(importer.ImporterProtocol):
 
         try:
             f = open(file_.name, encoding=self.file_encoding)
-        except IOError:
-            print('Cannot open/read {}'.format(file_.name))
+        
+            with f as fd:
+                reader = csv.reader(fd, delimiter=self.delimiter)
+                L = [1]  # row index in which cc number is found
+                C = 1  # column index in which iban is found
+                for i, line in enumerate(reader):
+                    if i in L:
+                        try:
+                            return self.ccnumber in line[C]
+                        except IndexError:
+                            return False
+
+        except (UnicodeDecodeError, IOError) as e:
+            if isinstance(e, UnicodeDecodeError):
+                print(f'***** file {file_.name} in PFCCImporter throws UnicodeDecodeError for encoding {e.encoding} of byte {e.object[e.start:e.end]} at position {e.start} and reason {e.reason}')
+            elif isinstance(e, IOError):
+                print('***** Cannot open/read {}'.format(file_.name))
             return False
-        with f as fd:
-            reader = csv.reader(fd, delimiter=self.delimiter)
-            L = [1]  # row index in which cc number is found
-            C = 1  # column index in which iban is found
-            for i, line in enumerate(reader):
-                if i in L:
-                    try:
-                        return self.ccnumber in line[C]
-                    except IndexError:
-                        return False
 
     def getLanguage(self, file_):
         # find out which language the report is in based on the first line
@@ -111,7 +115,7 @@ class PFCCImporter(importer.ImporterProtocol):
 
         except:
             pass
-        print('Cannot determine language of {}'.format(file_.name))
+        print('***** Cannot determine language of {}'.format(file_.name))
         return None
 
     def extract(self, file_, existing_entries=None):

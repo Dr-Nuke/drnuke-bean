@@ -26,11 +26,12 @@ def fmt_number_de(value: str) -> Decimal:
 def DecimalOrZero(value):
     # for string to number conversion with empty strings
     try:
-        return Decimal(value)
+        return Decimal(f'{float(value):.2f}')
     except:
-        return Decimal(0.0)
+        return Decimal('0.00')
 
-
+def strip_new_pf_format(s):
+        return s.strip("=").strip('"')
 class PFGImporter(importer.ImporterProtocol):
     """
     Beancount Importer for the Postfinance giro account bank statements
@@ -43,7 +44,8 @@ class PFGImporter(importer.ImporterProtocol):
                  currency='EUR',
                  file_encoding='utf-8',
                  manual_fixes=None,
-                 filetypes=[]):
+                 filetypes=[],
+                 date_format='%d.%m.%Y'):
 
         self.account = account
         if balance_account is not None:
@@ -62,6 +64,7 @@ class PFGImporter(importer.ImporterProtocol):
         self._balance_date = None
         self.delimiter = ';'
         self.manual_fixes = manual_fixes
+        self.date_format = date_format
 
     def name(self):
         return 'PFG {}'.format(self.__class__.__name__)
@@ -83,22 +86,27 @@ class PFGImporter(importer.ImporterProtocol):
         # pdf's and jpg's in case we just want csv's.
         if (len(self.filetypes) > 0) and (not (Path(file_.name).suffix.lower() in self.filetypes)):
             return False
-            
+
         try:
             f = open(file_.name, encoding=self.file_encoding)
-        except IOError:
-            print('Cannot open/read {}'.format(file_.name))
+
+            with f as fd:
+                reader = csv.reader(fd, delimiter=self.delimiter)
+                L = [3]  # row index in which iban is found
+                C = 1  # column index in which iban is found
+                for i, line in enumerate(reader):
+                    if i in L:
+                        try:
+                            return line[C] == self.iban
+                        except IndexError:
+                            return False
+
+        except (UnicodeDecodeError, IOError) as e:
+            if isinstance(e, UnicodeDecodeError):
+                print(f'***** file {file_.name} in PFGImporter throws UnicodeDecodeError for encoding {e.encoding} of byte {e.object[e.start:e.end]} at position {e.start} and reason {e.reason}')
+            elif isinstance(e, IOError):
+                print('***** Cannot open/read {}'.format(file_.name))
             return False
-        with f as fd:
-            reader = csv.reader(fd, delimiter=self.delimiter)
-            L = [3]  # row index in which iban is found
-            C = 1  # column index in which iban is found
-            for i, line in enumerate(reader):
-                if i in L:
-                    try:
-                        return line[C] == self.iban
-                    except IndexError:
-                        return False
 
     def getLanguage(self, file_):
         # find out which language the report is in based on the first line
@@ -108,12 +116,14 @@ class PFGImporter(importer.ImporterProtocol):
             with open(file_.name, encoding=self.file_encoding) as f:
                 line = f.readline()
                 for key, val in langdict.items():
-                    if line.startswith(key):
+                    if key in line:
                         return val
 
         except:
-            print('Cannot determine language of {}'.format(file_.name))
+            print('***** Cannot determine language of {}'.format(file_.name))
             pass
+        print(
+            f'***** None of the language detection strings {list(langdict.keys())} found in line "{line}"')
         return None
 
     def extract(self, file_, existing_entries=None):
@@ -131,19 +141,19 @@ class PFGImporter(importer.ImporterProtocol):
 
             reader = csv.reader(fd, delimiter=self.delimiter)
 
-            line = next(reader)  # from date
-            self._date_from = datetime.strptime(line[1], '%Y-%m-%d').date()
-            line = next(reader)  # to date
-            self._date_to = datetime.strptime(line[1], '%Y-%m-%d').date()
+            line = next(reader) # from date
+            self._date_from = datetime.strptime(strip_new_pf_format(line[1]), self.date_format).date()
+            line = next(reader)   # to date
+            self._date_to = datetime.strptime(strip_new_pf_format(line[1]), self.date_format).date()
 
             line = next(reader)  # ignore booking type line
             line = next(reader)  # ignoring IBAN line
-            line = next(reader)  # check currency
-            if line[1] != self.currency:
+            line = next(reader)    # check currency
+            if strip_new_pf_format(line[1]) != self.currency:
                 print('Importer vs. bankstatement currency: {} {} in {}'.format(
                     self.currency, line[1], file_.name))
                 return []
-
+            line = next(reader)  # ignore empty line
             # get the headers fot the actual transaction table
             cols = next(reader)
             # headers for english files:
@@ -162,7 +172,7 @@ class PFGImporter(importer.ImporterProtocol):
                 credit = DecimalOrZero(row[2])
                 debit = DecimalOrZero(row[3])
                 total = credit+debit  # mind PF sign convention
-                date = datetime.strptime(row[0], '%Y-%m-%d').date()
+                date = datetime.strptime(row[0], self.date_format).date()
                 amount = Amount(total, self.currency)
                 balance = Amount(DecimalOrZero(row[5]), self.currency)
                 description = row[1]
@@ -203,3 +213,4 @@ class PFGImporter(importer.ImporterProtocol):
                                          )
                 entries.append(trans)
         return entries
+
