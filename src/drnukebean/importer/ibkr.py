@@ -41,9 +41,11 @@ class IBKRImporter(importer.ImporterProtocol):
                  Mainaccount=None,  # for example Assets:Invest:IB
                  currency='CHF',
                  divSuffix='Div',  # suffix for dividend Account , like Assets:Invest:IB:VT:Div
+                 DividendsAccount=None,
                  interestSuffix='Interest',
                  WHTAccount=None,
                  FeesSuffix='Fees',
+                 FeesAccount=None,
                  PnLSuffix='PnL',
                  fpath=None,  #
                  depositAccount='',
@@ -53,9 +55,11 @@ class IBKRImporter(importer.ImporterProtocol):
         self.Mainaccount = Mainaccount  # main IB account in beancount
         self.currency = currency        # main currency of IB account
         self.divSuffix = divSuffix
+        self.DividendsAccount = DividendsAccount
         self.WHTAccount = WHTAccount
         self.interestSuffix = interestSuffix
         self.FeesSuffix = FeesSuffix
+        self.FeesAccount = FeesAccount
         self.PnLSuffix = PnLSuffix
         self.filepath = fpath             # optional file path specification,
         # if flex query should not be used online (loading time...)
@@ -74,8 +78,11 @@ class IBKRImporter(importer.ImporterProtocol):
         return ':'.join([self.Mainaccount, currency])
 
     def getDivIncomeAcconut(self, currency, symbol):
-        # Income:Invest:IB:VTI:Div
-        return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.divSuffix])
+        if self.DividendsAccount:
+            return self.DividendsAccount
+        else:
+            # Income:Invest:IB:VTI:Div
+            return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.divSuffix])
 
     def getInterestIncomeAcconut(self, currency):
         # Income:Invest:IB:USD
@@ -90,8 +97,11 @@ class IBKRImporter(importer.ImporterProtocol):
         return ':'.join([self.WHTAccount, symbol])
 
     def getFeesAccount(self, currency):
-        # Expenses:Invest:IB:Fees:USD
-        return ':'.join([self.Mainaccount.replace('Assets', 'Expenses'), self.FeesSuffix, currency])
+        if self.FeesAccount:
+            return self.FeesAccount
+        else:
+            # Expenses:Invest:IB:Fees:USD
+            return ':'.join([self.Mainaccount.replace('Assets', 'Expenses'), self.FeesSuffix, currency])
 
     def getPNLAccount(self, symbol):
         # Expenses:Invest:IB:Fees:USD
