@@ -203,10 +203,7 @@ class IBKRImporter(importer.ImporterProtocol):
                                                     else CashAction.DIVIDEND)
 
         if len(div) != len(wht):
-            warnings.warn('***** Warnging: number of Dividends {} ' +
-                          'mismatches number of WHTs {}. Skipping these Transactions' +
-                          'Transaction'.format(len(div), len(wht)))
-            matches = []
+            matches = self.Dividends(div, with_wht=False)
         elif len(div) == 0:
             # in case of no dividends,
             matches = []
@@ -265,25 +262,29 @@ class IBKRImporter(importer.ImporterProtocol):
                                  postings))
         return feeTransactions
 
-    def Dividends(self, match):
+    def Dividends(self, match, with_wht=True):
         # this function crates Dividend transactions from IBKR data
         # make dividend & WHT transactions
 
         divTransactions = []
         for idx, row in match.iterrows():
-            currency = row['currency_x']
-            currency_wht = row['currency_y']
-            if currency != currency_wht:
-                warnings.warn('Warnging: Dividend currency {} ' +
-                              'mismatches WHT currency {}. Skipping this' +
-                              'Transaction'.format(currency, currency_wht))
-                continue
             symbol = row['symbol']
+            if with_wht:
+                currency = row['currency_x']
+                currency_wht = row['currency_y']
+                if currency != currency_wht:
+                    warnings.warn(('Warning: Dividend currency {} ' +
+                                   'mismatches WHT currency {}. Skipping this' +
+                                   'Transaction').format(currency, currency_wht))
+                    continue
+                amount_div = amount.Amount(row['amount_x'], currency)
+                amount_wht = amount.Amount(row['amount_y'], currency)
+                text = row['description_x']
+            else:
+                currency = row['currency']
+                amount_div = amount.Amount(row['amount'], currency)
+                text = row['description']
 
-            amount_div = amount.Amount(row['amount_x'], currency)
-            amount_wht = amount.Amount(row['amount_y'], currency)
-
-            text = row['description_x']
             # Find ISIN in description in parentheses
             isin = re.findall('\(([a-zA-Z]{2}[a-zA-Z0-9]{9}\d)\)', text)[0]
             pershare_match = re.search('(\d*[.]\d*)(\D*)(PER SHARE)',
@@ -295,12 +296,20 @@ class IBKRImporter(importer.ImporterProtocol):
             postings = [data.Posting(self.getDivIncomeAcconut(currency,
                                                               symbol),
                                      -amount_div, None, None, None, None),
+                        ]
+            if with_wht:
+                postings.extend([
                         data.Posting(self.getWHTAccount(symbol),
                                      -amount_wht, None, None, None, None),
                         data.Posting(self.getLiquidityAccount(currency),
                                      AmountAdd(amount_div, amount_wht),
                                      None, None, None, None)
-                        ]
+                        ])
+            else:
+                postings.append(
+                        data.Posting(self.getLiquidityAccount(currency),
+                                     amount_div, None, None, None, None)
+                        )
             meta = data.new_metadata(
                 'dividend', 0, {'isin': isin, 'per_share': pershare})
             divTransactions.append(
