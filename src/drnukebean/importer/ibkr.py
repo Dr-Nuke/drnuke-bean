@@ -243,7 +243,11 @@ class IBKRImporter(importer.ImporterProtocol):
             currency = row['currency']
             amount_ = amount.Amount(row['amount'], currency)
             text = row['description']
-            month = re.findall('\w{3} \d{4}', text)[0]
+            month = re.findall('\w{3} \d{4}', text)
+            if month:
+                month = month[0]
+            else:
+                month = text
 
             # make the postings, two for fees
             postings = [data.Posting(self.getFeesAccount(currency),
