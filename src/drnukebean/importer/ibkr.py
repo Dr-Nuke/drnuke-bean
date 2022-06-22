@@ -108,7 +108,7 @@ class IBKRImporter(importer.ImporterProtocol):
         return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.PnLSuffix])
 
     def file_account(self, _):
-        return self.account
+        return self.Mainaccount
 
     def extract(self, credsfile, existing_entries=None):
         # the actual processing of the flex query
