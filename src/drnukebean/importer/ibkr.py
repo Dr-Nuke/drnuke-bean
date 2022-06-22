@@ -573,10 +573,10 @@ class IBKRImporter(importer.ImporterProtocol):
                 warnings.warn(f"Lots matching failure: sell index={idx}")
 
             postings = [
-                # data.Posting(self.getAssetAccount(symbol),  # this first posting is probably wrong
-                # quantity, None, price, None, None),
-                data.Posting(self.getLiquidityAccount(currency),
-                             proceeds, None, None, None, None)
+                data.Posting(self.getAssetAccount(symbol),  # this first posting is probably wrong
+                quantity, None, price, None, None),
+                #data.Posting(self.getLiquidityAccount(currency),
+                #             proceeds, None, None, None, None)
             ] +  \
                 lotpostings + \
                 [data.Posting(self.getPNLAccount(symbol),
