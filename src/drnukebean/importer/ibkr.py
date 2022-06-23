@@ -49,7 +49,8 @@ class IBKRImporter(importer.ImporterProtocol):
                  PnLSuffix='PnL',
                  fpath=None,  #
                  depositAccount='',
-                 suppressClosedLotPrice=False
+                 suppressClosedLotPrice=False,
+                 symbolMap={},
                  ):
 
         self.Mainaccount = Mainaccount  # main IB account in beancount
@@ -69,6 +70,7 @@ class IBKRImporter(importer.ImporterProtocol):
         # deposit transactions, provide a True value
         self.suppressClosedLotPrice = suppressClosedLotPrice
         self.flag = '*'
+        self.symbolMap = symbolMap
 
     def identify(self, file):
         return 'ibkr.yaml' == path.basename(file.name)
@@ -77,12 +79,16 @@ class IBKRImporter(importer.ImporterProtocol):
         # Assets:Invest:IB:USD
         return ':'.join([self.Mainaccount, currency])
 
+    def mapSymbol(self, symbol):
+        return self.symbolMap.get(symbol, symbol)
+
     def getDivIncomeAcconut(self, currency, symbol):
         if self.DividendsAccount:
             return self.DividendsAccount
         else:
             # Income:Invest:IB:VTI:Div
-            return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.divSuffix])
+            return ':'.join([self.Mainaccount.replace('Assets', 'Income'),
+                            self.mapSymbol(symbol), self.divSuffix])
 
     def getInterestIncomeAcconut(self, currency):
         # Income:Invest:IB:USD
@@ -90,11 +96,11 @@ class IBKRImporter(importer.ImporterProtocol):
 
     def getAssetAccount(self, symbol):
         # Assets:Invest:IB:VTI
-        return ':'.join([self.Mainaccount, symbol])
+        return ':'.join([self.Mainaccount, self.mapSymbol(symbol)])
 
     def getWHTAccount(self, symbol):
         # Expenses:Invest:IB:VTI:WTax
-        return ':'.join([self.WHTAccount, symbol])
+        return ':'.join([self.WHTAccount, self.mapSymbol(symbol)])
 
     def getFeesAccount(self, currency):
         if self.FeesAccount:
@@ -105,7 +111,8 @@ class IBKRImporter(importer.ImporterProtocol):
 
     def getPNLAccount(self, symbol):
         # Expenses:Invest:IB:Fees:USD
-        return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.PnLSuffix])
+        return ':'.join([self.Mainaccount.replace('Assets', 'Income'),
+                        self.mapSymbol(symbol), self.PnLSuffix])
 
     def file_account(self, _):
         return self.Mainaccount
@@ -272,7 +279,7 @@ class IBKRImporter(importer.ImporterProtocol):
 
         divTransactions = []
         for idx, row in match.iterrows():
-            symbol = row['symbol']
+            symbol = self.mapSymbol(row['symbol'])
             if with_wht:
                 currency = row['currency_x']
                 currency_wht = row['currency_y']
@@ -478,7 +485,7 @@ class IBKRImporter(importer.ImporterProtocol):
             # continue # debugging
             currency = row['currency']
             currency_IBcommision = row['ibCommissionCurrency']
-            symbol = row['symbol']
+            symbol = self.mapSymbol(row['symbol'])
             proceeds = amount.Amount(row['proceeds'].__round__(2), currency)
             commission = amount.Amount(
                 (row['ibCommission'].__round__(2)), currency_IBcommision)
@@ -532,7 +539,7 @@ class IBKRImporter(importer.ImporterProtocol):
             proceeds = amount.Amount(row['proceeds'].__round__(2), currency)
             commission = amount.Amount(
                 (row['ibCommission'].__round__(2)), currency_IBcommision)
-            quantity = amount.Amount(row['quantity'], symbol)
+            quantity = amount.Amount(row['quantity'], self.mapSymbol(symbol))
             price = amount.Amount(row['tradePrice'], currency)
             text = row['description']
             date = row['dateTime'].date()
@@ -591,7 +598,7 @@ class IBKRImporter(importer.ImporterProtocol):
                 data.Transaction(data.new_metadata('Buy', 0),
                                  date,
                                  self.flag,
-                                 symbol,     # payee
+                                 self.mapSymbol(symbol),     # payee
                                  ' '.join(
                                      ['SELL', quantity.to_string(), '@', price.to_string()]),
                                  data.EMPTY_SET,
