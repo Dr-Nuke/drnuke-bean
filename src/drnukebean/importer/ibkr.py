@@ -392,11 +392,11 @@ class IBKRImporter(importer.ImporterProtocol):
             symbol = row['symbol']
             curr_prim, curr_sec = getForexCurrencies(symbol)
             currency_IBcommision = row['ibCommissionCurrency']
-            proceeds = amount.Amount(row['proceeds'], curr_sec)
-            quantity = amount.Amount(row['quantity'], curr_prim)
+            proceeds = amount.Amount(round(row['proceeds'],2), curr_sec)
+            quantity = amount.Amount(round(row['quantity'],2), curr_prim)
             price = amount.Amount(row['tradePrice'], curr_sec)
             commission = amount.Amount(
-                row['ibCommission'], currency_IBcommision)
+                round(row['ibCommission'],2), currency_IBcommision)
             buysell = row['buySell'].name
 
             cost = position.CostSpec(
