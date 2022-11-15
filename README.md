@@ -19,6 +19,63 @@ Insallation: make ibkr.py accessible for you python distro for importing. See th
 ## Postfinance Importer (Swiss)
 Two importers for Postfinance Giro account and credit card. Since Postfinance (as of 2020) does not offer API-like access, it requires manual download of bank statements in .csv format
 
+## FinPension Importer
+Imports CSVs from Finpension (https://app.finpension.ch/documents/transactions)
+
+Commodities.bean:
+```
+; Finpension
+1970-01-01 commodity CSIFEM
+	name: "CSIF (CH) Equity Emerging Markets Blue DB"
+	asset-class: "stock"
+	price: "CHF:yahoo/0P0000A2DE.SW"
+	isin: "CH0017844686"
+	
+1970-01-01 commodity CSIFWEXCH
+	name: "CSIF (CH) III Equity World ex CH Blue - Pension Fund Plus ZB"
+	asset-class: "stock"
+	price: "CHF:yahoo/0P0001EDRL.SW"
+	isin: "CH0429081620"
+
+1970-01-01 commodity CSIFWEXCHSC
+	name: "CSIF (CH) III Equity World ex CH Small Cap Blue - Pension Fund DB"
+	asset-class: "stock"
+	price: "CHF:yahoo/0P0000YXR4.SW"
+	isin: "CH0214967314" 
+```
+
+Config.py:
+```
+from beancount.ingest import extract
+from drnukebean.importer import finpension
+
+
+FINPENSION = finpension.FinPensionImporter(
+    Mainaccount='Assets:Invest:S2:Finpension',  # main IB account
+    divSuffix='Div',            # suffix for dividend account, like Assets:Invest:IB:VT:Div
+    interestSuffix='Interest',  # suffix for interest income account
+    PnLSuffix='PnL',            # suffix for PnL Account
+    FeesSuffix='Fees',          # suffix for fees & commisions
+    currency='CHF',             # main currency
+    depositAccount=None,
+    ISIN_lookup={"CH0017844686": "CSIFEM",     # required to link ISIN with bean ticker
+                 "CH0429081620": "CSIFWEXCH",
+                 "CH0214967314": "CSIFWEXCHSC",
+                 },
+    file_encoding="utf-8-sig",
+    sep=";",  # csv file separator
+    # a regex pattern that allows to distinguish between pillar 2&3 and individual portfolios
+    regex=r"finpension_(S[2,3][a-zA-Z0-9]?)_([A-Z][a-zA-Z]+\d)",
+)
+
+CONFIG = [FINPENSION]
+extract.HEADER = ''  # remove unnesseccary terminal output
+
+
+```
+
+
+
 
 ## spread plugin
 A plugin to distribute singele tansactions over a period of time.
