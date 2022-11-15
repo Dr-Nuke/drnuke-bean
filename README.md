@@ -21,6 +21,8 @@ Two importers for Postfinance Giro account and credit card. Since Postfinance (a
 
 ## FinPension Importer
 Imports CSVs from Finpension (https://app.finpension.ch/documents/transactions)
+Here you find example configs for 3 funds to set up a working example.
+
 
 Commodities.bean:
 ```
@@ -70,12 +72,15 @@ FINPENSION = finpension.FinPensionImporter(
 
 CONFIG = [FINPENSION]
 extract.HEADER = ''  # remove unnesseccary terminal output
-
-
 ```
 
-
-
+Main.bean:
+make sure to use "NONE" booking as Finpension does not track lots (see http://furius.ca/beancount/doc/booking)
+```
+1970-07-07 open Assets:Invest:S2:Finpension:Portfolio1:CSIFWEXCH "NONE"
+1970-07-07 open Assets:Invest:S2:Finpension:Portfolio1:CSIFEM "NONE"
+1970-07-07 open Assets:Invest:S2:Finpension:Portfolio1:CSIFWEXCHSC "NONE"
+```
 
 ## spread plugin
 A plugin to distribute singele tansactions over a period of time.
