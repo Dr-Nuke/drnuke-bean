@@ -27,14 +27,10 @@ from beancount.core.number import Decimal
 from beancount.core import position
 from beancount.core.number import MISSING
 
-logger.add("sys.stderr",
-           format="{time}|{name}|{level}|{module}:{file}:{line}|{message}",
-           level="INFO",
-           colorize=True,
-           rotation="1 week",
-           backtrace=True,
-           diagnose=True,
-           )
+# some constants set by FinPension in the csv export header
+FP_currency = 'Asset Currency'
+FP_proceeds = 'Cash Flow'
+FP_asseet_price = 'Asset Price in CHF'
 
 
 class FinPensionImporter(importer.ImporterProtocol):
@@ -43,33 +39,26 @@ class FinPensionImporter(importer.ImporterProtocol):
     """
 
     def __init__(self,
-                 Mainaccount=None,  # for example Assets:Invest:IB
-                 currency='CHF',
-                 divSuffix='Div',  # suffix for dividend Account , like Assets:Invest:IB:VT:Div
-                 interestSuffix='Interest',
-                 WHTAccount=None,
-                 FeesSuffix='Fees',
-                 PnLSuffix='PnL',
-                 depositAccount='',
-                 ISIN_lookup=None,
+                 deposit_account = None,
+                 root_account = None,
+                 isin_lookup = None, # for example Assets:Invest:IB
+                 div_suffix='Div',  # suffix for dividend Account , like Assets:Invest:IB:VT:Div
+                 interest_suffix='Interest',
+                 fees_suffix='Fees',
+                 pnl_suffix='PnL',
                  file_encoding="utf-8-sig",
                  sep=";",
                  # a regex pattern that allows to distinguish between pillar 2&3 and individual portfolios
                  regex=r"finpension_(S[2,3][a]?)_(Portfolio\d)",
                  ):
 
-        self.Mainaccount = Mainaccount  # main IB account in beancount
-        self.currency = currency        # main currency of IB account
-        self.divSuffix = divSuffix
-        self.WHTAccount = WHTAccount
-        self.interestSuffix = interestSuffix
-        self.FeesSuffix = FeesSuffix
-        self.PnLSuffix = PnLSuffix
-        self.ISIN_lookup = ISIN_lookup
-        # Cash deposits are usually already covered
-        self.depositAccount = depositAccount
-        # by checkings account statements. If you want anyway the
-        # deposit transactions, provide a True value
+        self.root_account = root_account  # root account from  which others can be derived
+        self.deposit_account = deposit_account
+        self.div_suffix = div_suffix
+        self.interest_suffix = interest_suffix
+        self.fees_suffix = fees_suffix
+        self.pnl_suffix = pnl_suffix
+        self.isin_lookup = isin_lookup
         self.file_encoding = file_encoding
         self.flag = '*'
         self.regex = regex
@@ -83,25 +72,22 @@ class FinPensionImporter(importer.ImporterProtocol):
         return result
 
     def getLiquidityAccount(self, currency):
-        return ':'.join([self.Mainaccount, currency])
+        return ':'.join([self.main_account, currency])
 
     def getDivIncomeAcconut(self, currency, symbol):
-        return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.divSuffix])
+        return ':'.join([self.main_account.replace('Assets', 'Income'), symbol, self.div_suffix])
 
     def getInterestIncomeAcconut(self, currency):
-        return ':'.join([self.Mainaccount.replace('Assets', 'Income'), self.interestSuffix, currency])
+        return ':'.join([self.main_account.replace('Assets', 'Income'), self.interest_suffix, currency])
 
     def getAssetAccount(self, symbol):
-        return ':'.join([self.Mainaccount, symbol])
+        return ':'.join([self.main_account, symbol])
 
     def getFeesAccount(self, currency):
-        return ':'.join([self.Mainaccount.replace('Assets', 'Expenses'), self.FeesSuffix, currency])
-
-    def getPNLAccount(self, symbol):
-        return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.PnLSuffix])
+        return ':'.join([self.main_account.replace('Assets', 'Expenses'), self.fees_suffix, currency])
 
     def file_account(self, _):
-        return self.account
+        return self.main_account or self.root_account
 
     def fix_accounts(self, file):
         try:
@@ -111,8 +97,9 @@ class FinPensionImporter(importer.ImporterProtocol):
             logger.error(
                 f"could not extract pillar and/or portfolio from filename {file.name} with regex pattern {self.regex}.")
             raise AttributeError(e)
-        self.Mainaccount = ":".join(
-            [re.sub(r"S\d", pillar, self.Mainaccount), portfolio])
+        new_account = re.sub(r"S[2,3]a?", pillar, self.root_account)
+        self.main_account = re.sub(r"Portfolio\d", portfolio, new_account)    
+            
 
 
     def extract(self, file_, existing_entries=None):
@@ -135,14 +122,15 @@ class FinPensionImporter(importer.ImporterProtocol):
         df['Date'] = pd.to_datetime(df['Date']).apply(datetime.date)
 
         # disect the complete report in similar transactions
-        trades = df[df.Category == "Portfolio Transaction"]
-        transfers = df[df.Category == "Transfer vested benefits"]
-        fees = df[df.Category == "Implementation fees"]
+        # abit messy since Finpension uses different tags in pillar 2/3a
+        trades = df[df.Category.isin(["Portfolio Transaction",'Buy','Sell'])]
+        deposits = df[df.Category.isin(["Transfer vested benefits",'Deposit'])]
+        fees = df[df.Category.isin(["Implementation fees",'Flat-rate administrative fee'])]
         interests = df[df.Category == "Interests"]
-        dividends = df[df.Category == "Dividend and Interest Distributions"]
+        dividends = df[df.Category.isin(["Dividend and Interest Distributions",'Dividend'])]
 
         return_txn = (self.Trades(trades)
-                      # + self.Transfers(transfers) # omitted for only occuring very rarely
+                      + self.Deposits(deposits) # omitted for only occuring very rarely
                       + self.Fees(fees)
                       + self.Interest(interests)
                       + self.Dividends(dividends)
@@ -154,18 +142,18 @@ class FinPensionImporter(importer.ImporterProtocol):
     def Trades(self, trades):
         bean_transactions = []
         for idx, row in trades.iterrows():
-            currency = row['Asset Currency']
+            currency = row[FP_currency]
             isin = row['ISIN']
-            symbol = self.ISIN_lookup.get(isin)
+            symbol = self.isin_lookup.get(isin)
             asset = row['Asset Name']
             if symbol is None:
                 logger.error(
-                    f"Could not fetch isin {row['symbol']} from supplied ISINs {list(self.ISIN_lookup.keys())}")
+                    f"Could not fetch isin {row['symbol']} from supplied ISINs {list(self.isin_lookup.keys())}")
                 continue
-            proceeds = amount.Amount(row['Cash Flow'], currency)
+            proceeds = amount.Amount(row[FP_proceeds], currency)
 
             quantity = amount.Amount(row['Number of Shares'], symbol)
-            price = amount.Amount(row['Asset Price in CHF'], "CHF")
+            price = amount.Amount(row[FP_asseet_price], "CHF")
 
             cost = position.CostSpec(
                 number_per=price.number,
@@ -198,13 +186,12 @@ class FinPensionImporter(importer.ImporterProtocol):
                                  ))
         return bean_transactions
 
-
     def Fees(self, fees):
 
         bean_transactions = []
         for idx, row in fees.iterrows():
-            currency = row['Asset Currency']
-            amount_ = amount.Amount(row['Cash Flow'], currency)
+            currency = row[FP_currency]
+            amount_ = amount.Amount(row[FP_proceeds], currency)
 
             # make the postings, two for fees
             postings = [data.Posting(self.getFeesAccount(currency),
@@ -229,23 +216,31 @@ class FinPensionImporter(importer.ImporterProtocol):
 
         bean_transactions = []
         for idx, row in dividends.iterrows():
-            currency = row['Asset Currency']
+            currency = row[FP_currency]
             isin = row['ISIN']
-            symbol = self.ISIN_lookup.get(isin)
+            symbol = self.isin_lookup.get(isin)
             if symbol is None:
                 logger.error(
-                    f"Could not fetch isin {row['symbol']} from supplied ISINs {list(self.ISIN_lookup.keys())}")
+                    f"Could not fetch isin {row['symbol']} from supplied ISINs {list(self.isin_lookup.keys())}")
                 continue
-            amount_div = amount.Amount(row['Cash Flow'], currency)
-            pershare = amount.Amount(row['Asset Price in CHF'], currency)
+            amount_div = amount.Amount(row[FP_proceeds], currency)
+            
+            
 
             postings = [data.Posting(self.getDivIncomeAcconut(currency, symbol),
                                      -amount_div, None, None, None, None),
                         data.Posting(self.getLiquidityAccount(currency),
                                      amount_div, None, None, None, None)
                         ]
+
+            metadict = {'isin': isin}
+            per_share_number = row[FP_asseet_price]
+            if not per_share_number.is_nan():
+                pershare = amount.Amount(row[FP_asseet_price], currency)
+                metadict.update({'per_share': pershare})
+
             meta = data.new_metadata(
-                'dividend', 0, {'isin': isin, 'per_share': pershare})
+                'dividend', 0, metadict)
             bean_transactions.append(
                 data.Transaction(meta,  # could add div per share, ISIN,....
                                  row['Date'],
@@ -263,8 +258,8 @@ class FinPensionImporter(importer.ImporterProtocol):
         # calculates interest payments from IBKR data
         bean_transactions = []
         for idx, row in int_.iterrows():
-            currency = row['Asset Currency']
-            amount_ = amount.Amount(row['Cash Flow'], currency)
+            currency = row[FP_currency]
+            amount_ = amount.Amount(row[FP_proceeds], currency)
 
             # make the postings, two for interest payments
             # received and paid interests are booked on the same account
@@ -294,7 +289,7 @@ class FinPensionImporter(importer.ImporterProtocol):
         bean_transactions = []
         df = df[df['Date'] == df['Date'].max()]
         for idx, row in df.iterrows():
-            currency = row['Asset Currency']
+            currency = row[FP_currency]
             amount_ = amount.Amount(row['Balance'], currency)
             meta = data.new_metadata('balance', 0)
             bean_transactions.append(data.Balance(
@@ -305,3 +300,30 @@ class FinPensionImporter(importer.ImporterProtocol):
                 None,
                 None))
         return bean_transactions
+
+    def Deposits(self, dep):
+            bean_transactions = []
+            if len(self.deposit_account) == 0:  # control this from the config file
+                return []
+            for idx, row in dep.iterrows():
+                currency = row[FP_currency]
+                amount_ = amount.Amount(row[FP_proceeds], currency)
+
+                # make the postings. two for deposits
+                postings = [data.Posting(self.deposit_account,
+                                        -amount_, None, None, None, None),
+                            data.Posting(self.getLiquidityAccount(currency),
+                                        amount_, None, None, None, None)
+                            ]
+                meta = data.new_metadata('deposit/withdrawel', 0)
+                bean_transactions.append(
+                    data.Transaction(meta,  # could add div per share, ISIN,....
+                                    row['Date'],
+                                    self.flag,
+                                    'self',     # payee
+                                    "deposit / withdrawal",
+                                    data.EMPTY_SET,
+                                    data.EMPTY_SET,
+                                    postings
+                                    ))
+            return bean_transactions

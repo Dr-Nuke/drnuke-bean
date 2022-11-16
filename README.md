@@ -23,8 +23,20 @@ Two importers for Postfinance Giro account and credit card. Since Postfinance (a
 Imports CSVs from Finpension (https://app.finpension.ch/documents/transactions)
 Here you find example configs for 3 funds to set up a working example.
 
+Caveats:
+* the ending balance of a report can be ambigoues. I decided to just turn all balances of the last date into balance statements. the wrong ones need to be removed manually. This should not be a big effort, as the wrong ones are detected as such by bean-check/ fava
+* the reports only deliver ISIN identifiers, no trackers etc.. The yahoo trackers of most funds are not allowed as currency in beancount syntax. Hence the user needs to make its own valid trackers, and supply a lookup against the according isin to the importer
+* Finpension does not support lot tracking, hence no lot bookinig possible
+* the csv report contains no information on the account or the pillar (ger: "Säule") 2 or 3a. hence this information must be passed to the interpreter in another way, I decided for a file name convention & regex detection. ugly, but it works
 
-Commodities.bean:
+File name convention:
+
+Renaming the transaction export such that the file names contain `finpension_SX_PortfolioY`, for example
+```
+finpension_S3a_Portfolio1_transaction_report__csv_file__(1).csv
+```
+
+Commodities.bean example:
 ```
 ; Finpension
 1970-01-01 commodity CSIFEM
@@ -46,28 +58,28 @@ Commodities.bean:
 	isin: "CH0214967314" 
 ```
 
-Config.py:
+Config.py example:
 ```
 from beancount.ingest import extract
 from drnukebean.importer import finpension
 
 
 FINPENSION = finpension.FinPensionImporter(
-    Mainaccount='Assets:Invest:S2:Finpension',  # main IB account
-    divSuffix='Div',            # suffix for dividend account, like Assets:Invest:IB:VT:Div
-    interestSuffix='Interest',  # suffix for interest income account
-    PnLSuffix='PnL',            # suffix for PnL Account
-    FeesSuffix='Fees',          # suffix for fees & commisions
-    currency='CHF',             # main currency
-    depositAccount=None,
-    ISIN_lookup={"CH0017844686": "CSIFEM",     # required to link ISIN with bean ticker
+    root_account='Assets:Invest:S2:Finpension:Portfolio1',  # "root" Finpens account
+    deposit_account='Assets:YourBank:Checking', # where from deposits are coming
+    div_suffix='Div',            # suffix for dividend account
+    interest_suffix='Interest',  # suffix for interest income account
+    pnl_suffix='PnL',            # suffix for PnL Account
+    fees_suffix='Fees',          # suffix for fees & commisions
+    isin_lookup={"CH0017844686": "CSIFEM",     # required to link ISIN with bean ticker
                  "CH0429081620": "CSIFWEXCH",
-                 "CH0214967314": "CSIFWEXCHSC",
-                 },
+                 "CH0214967314": "CSIFWEXCHSC"},
     file_encoding="utf-8-sig",
     sep=";",  # csv file separator
     # a regex pattern that allows to distinguish between pillar 2&3 and individual portfolios
-    regex=r"finpension_(S[2,3][a-zA-Z0-9]?)_([A-Z][a-zA-Z]+\d)",
+    # requires the first group to identify the pillar accounts, e.g. S2 or S3a
+    # and the second group to identify the portfolio subaccount, e.g. Portfolio1
+    regex=r"finpension_(S[2,3]a?)_([A-Z][a-zA-Z]+\d)"
 )
 
 CONFIG = [FINPENSION]
@@ -75,12 +87,14 @@ extract.HEADER = ''  # remove unnesseccary terminal output
 ```
 
 Main.bean:
-make sure to use "NONE" booking as Finpension does not track lots (see http://furius.ca/beancount/doc/booking)
+make sure to use "NONE" booking as Finpension does not track lots (see http://furius.ca/beancount/doc/booking) in order to prevent "No matching lot" errors
 ```
 1970-07-07 open Assets:Invest:S2:Finpension:Portfolio1:CSIFWEXCH "NONE"
 1970-07-07 open Assets:Invest:S2:Finpension:Portfolio1:CSIFEM "NONE"
 1970-07-07 open Assets:Invest:S2:Finpension:Portfolio1:CSIFWEXCHSC "NONE"
 ```
+
+
 
 ## spread plugin
 A plugin to distribute singele tansactions over a period of time.
