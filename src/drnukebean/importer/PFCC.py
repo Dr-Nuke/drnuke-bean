@@ -187,27 +187,33 @@ class PFCCImporter(importer.ImporterProtocol):
                             None,
                             None))
                 else:    # if not balance, it's a transaction
-                    # prepare/ make statement
                     d = dict(amount=amount,
-                             account=self.account,
-                             meta=meta,
-                             flag=self.FLAG,
-                             narration=description,
-                             payee='',
-                             date=date,
-                             )
+                         account=self.account,
+                         meta=meta,
+                         flag=self.FLAG,
+                         narration=description,
+                         payee='',
+                         date=date,
+                         postings=[data.Posting(self.account,
+                                                amount,
+                                                None,
+                                                None,
+                                                None,
+                                                None)]
+                         )
 
-                    d = self.manual_fixes(d)
-
+                    if self.manual_fixes is not None:
+                        d = self.manual_fixes(d)
+                        
                     trans = data.Transaction(d['meta'],
-                                             d['date'],
-                                             d['flag'],
-                                             remove_spaces(d['payee']),
-                                             remove_spaces(d['narration']),
-                                             data.EMPTY_SET,
-                                             data.EMPTY_SET,
-                                             d['postings']
-                                             )
+                                            d['date'],
+                                            d['flag'],
+                                            remove_spaces(d['payee']),
+                                            remove_spaces(d['narration']),
+                                            data.EMPTY_SET,
+                                            data.EMPTY_SET,
+                                            d['postings']
+                                            )
                     entries.append(trans)
 
         return entries
