@@ -155,17 +155,9 @@ class FinPensionImporter(importer.ImporterProtocol):
             quantity = amount.Amount(row['Number of Shares'], symbol)
             price = amount.Amount(row[FP_asseet_price], "CHF")
 
-            cost = position.CostSpec(
-                number_per=price.number,
-                number_total=None,
-                currency=currency,
-                date=None,
-                label=None,
-                merge=False)
-
             postings = [
                 data.Posting(self.getAssetAccount(symbol),
-                             quantity, cost, None, None, None),
+                             quantity, None, price, None, None),
                 data.Posting(self.getLiquidityAccount(currency),
                              proceeds, None, None, None, None),
             ]
