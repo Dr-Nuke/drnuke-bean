@@ -31,10 +31,14 @@ import pandas as pd
 
 __plugins__ = ['spreading']
 
+OPENED_ACCOUNTS = []
+
 
 def spreading(entries, options_map, config_str):
     new_entries = []
     errors = []
+    added_entries = [] # debug
+    replaced_entries = []
 
     # assert correctness of the parameter
     config_obj = eval(config_str, {}, {})
@@ -52,9 +56,16 @@ def spreading(entries, options_map, config_str):
 
     for entry in entries:
         if isinstance(entry, Transaction) and 'p_spreading_start' in entry.meta:
-            spread_entries, spread_errors = spread(entry, config_obj)
+            spread_entries, spread_errors, open_directive = spread(entry, config_obj)
             new_entries.extend(spread_entries)
+            if open_directive.account not in OPENED_ACCOUNTS:
+                OPENED_ACCOUNTS.append(open_directive.account)
+                new_entries.append(open_directive)
+                added_entries.append(open_directive)
             errors.extend(spread_errors)
+            replaced_entries.append(entry)
+            added_entries.extend(spread_entries)
+
         else:
             # Always replicate the existing entries - unless 'amortize_months'
             # is in the metadata
@@ -74,8 +85,13 @@ def spread(entry, config_obj):
     # get info from incoming entry
     asset_posting = get_asset(entry)
     income_posting = get_income(entry)
-    claim_account = config_obj['liability_acc_base'] + \
+    claim_account = config_obj['liability_acc_base'] + 'Spreading:' + \
         acc.sans_root(income_posting.account)
+    open_directive = data.Open(entry.meta,
+                               datetime.date(1970,1,1),
+                               claim_account,
+                               [income_posting.units.currency],
+                               None)
     units = asset_posting.units
     value = units.number
     currency = units.currency
@@ -130,7 +146,7 @@ def spread(entry, config_obj):
         meta = {key: val for key, val in entry.meta.items()
                 if key not in dropkeys}
         meta.update(
-            {'p_spreading': f"split {value} into {n_divides} chunks, {entry.meta['p_spreading_frequency']}"})
+            {'p_spreading': f"split {value} into {n_divides} chunks, {entry.meta['p_spreading_frequency']}, original date {entry.date.strftime(r'%Y-%m-%d')}"})
         trans = data.Transaction(meta=meta,
                                  date=date,
                                  flag='*',
@@ -142,7 +158,7 @@ def spread(entry, config_obj):
                                            claim])
         entries.append(trans)
 
-    return entries, errors
+    return entries, errors, open_directive
 
 
 def get_income(entry):

@@ -57,7 +57,7 @@ def tax_forecast(entries, options, config_str):
 
     # aggregate and scale to 12 months
     taxable_income = taxable_incomes_by_currency.in_base_curr.sum() / \
-        (last_month_of_income*12)
+        last_month_of_income*12
 
     assets = 0
     taxable_income_float = abs(float(taxable_income))
