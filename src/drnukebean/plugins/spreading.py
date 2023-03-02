@@ -31,7 +31,7 @@ import pandas as pd
 
 __plugins__ = ['spreading']
 
-OPENED_ACCOUNTS = []
+
 
 
 def spreading(entries, options_map, config_str):
@@ -39,6 +39,8 @@ def spreading(entries, options_map, config_str):
     errors = []
     added_entries = [] # debug
     replaced_entries = []
+
+    opened_accounts = [e.account for e in entries if isinstance(e,data.Open)]
 
     # assert correctness of the parameter
     config_obj = eval(config_str, {}, {})
@@ -58,8 +60,8 @@ def spreading(entries, options_map, config_str):
         if isinstance(entry, Transaction) and 'p_spreading_start' in entry.meta:
             spread_entries, spread_errors, open_directive = spread(entry, config_obj)
             new_entries.extend(spread_entries)
-            if open_directive.account not in OPENED_ACCOUNTS:
-                OPENED_ACCOUNTS.append(open_directive.account)
+            if open_directive.account not in opened_accounts:
+                opened_accounts.append(open_directive.account)
                 new_entries.append(open_directive)
                 added_entries.append(open_directive)
             errors.extend(spread_errors)
