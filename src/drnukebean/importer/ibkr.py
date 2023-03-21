@@ -71,6 +71,9 @@ class IBKRImporter(importer.ImporterProtocol):
     def identify(self, file):
         return self.configFile == path.basename(file.name)
 
+    def name(self) -> str:
+        return self.configFile
+
     def getLiquidityAccount(self, currency):
         # Assets:Invest:IB:USD
         return ':'.join([self.Mainaccount, currency])
@@ -100,7 +103,7 @@ class IBKRImporter(importer.ImporterProtocol):
         return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.PnLSuffix])
 
     def file_account(self, _):
-        return self.account
+        return self.Mainaccount
 
     def extract(self, credsfile, existing_entries=None):
         # the actual processing of the flex query
