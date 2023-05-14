@@ -182,12 +182,12 @@ class PFGImporter(importer.ImporterProtocol):
                 total = credit+debit  # mind PF sign convention
                 date = datetime.strptime(row[0], self.date_format).date()
                 amount = Amount(total, self.currency)
-                balance = Amount(DecimalOrZero(row[5]), self.currency)
                 description = row[1]
                 # pdb.set_trace()
                 # get closing balance, if available
                 # i just happens that the first trasaction contains the latest balance
-                if (i == 0) & (row[5] != ''):
+                if (i == 0) and (len(row) >= 5) and (row[5] != ''):
+                    balance = Amount(DecimalOrZero(row[5]), self.currency)
                     entries.append(
                         data.Balance(
                             meta,
