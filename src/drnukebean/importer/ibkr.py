@@ -9,7 +9,7 @@ Setup:
 """
 
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import timedelta
 import xml.etree.ElementTree as ET
 import warnings
 import pickle
@@ -197,18 +197,13 @@ class IBKRImporter(importer.ImporterProtocol):
                                                     CashAction.PAYMENTINLIEU if re.match('.*payment in lieu of dividend', d, re.IGNORECASE)
                                                     else CashAction.DIVIDEND)
 
-        if len(div) != len(wht):
-            warnings.warn('***** Warnging: number of Dividends {} ' +
-                          'mismatches number of WHTs {}. Skipping these Transactions' +
-                          'Transaction'.format(len(div), len(wht)))
-            matches = []
-        elif len(div) == 0:
+        if len(div) == 0:
             # in case of no dividends,
             matches = []
         else:
             # matching WHT & div
             match = pd.merge(
-                div, wht, on=['symbol', 'reportDate', '__divtype__'])
+                div, wht, on=['symbol', 'reportDate', '__divtype__'], how='left')
             matches = self.Dividends(match)
 
         dep = ct[ct['type'] == CashAction.DEPOSITWITHDRAW]    # Deposits only
@@ -268,15 +263,13 @@ class IBKRImporter(importer.ImporterProtocol):
         for idx, row in match.iterrows():
             currency = row['currency_x']
             currency_wht = row['currency_y']
-            if currency != currency_wht:
-                warnings.warn('Warnging: Dividend currency {} ' +
-                              'mismatches WHT currency {}. Skipping this' +
-                              'Transaction'.format(currency, currency_wht))
+            if not pd.isna(currency_wht) and currency != currency_wht:
+                warnings.warn(f"Warnging: Dividend currency {currency} " +
+                              f"mismatches WHT currency {currency_wht}. Skipping this Transaction")
                 continue
             symbol = row['symbol']
 
             amount_div = amount.Amount(row['amount_x'], currency)
-            amount_wht = amount.Amount(row['amount_y'], currency)
 
             text = row['description_x']
             # Find ISIN in description in parentheses
@@ -286,16 +279,27 @@ class IBKRImporter(importer.ImporterProtocol):
             # payment in lieu of a dividend does not have a PER SHARE in description
             pershare = pershare_match.group(1) if pershare_match else ''
 
-            # make the postings, three for dividend/ wht transactions
-            postings = [data.Posting(self.getDivIncomeAcconut(currency,
-                                                              symbol),
-                                     -amount_div, None, None, None, None),
-                        data.Posting(self.getWHTAccount(symbol),
-                                     -amount_wht, None, None, None, None),
-                        data.Posting(self.getLiquidityAccount(currency),
-                                     AmountAdd(amount_div, amount_wht),
-                                     None, None, None, None)
-                        ]
+            if pd.isna(row['amount_y']):
+                # make the postings, for transactions without wht
+                postings = [data.Posting(self.getDivIncomeAcconut(currency,
+                                                                symbol),
+                                        -amount_div, None, None, None, None),
+                            data.Posting(self.getLiquidityAccount(currency),
+                                        amount_div,
+                                        None, None, None, None)
+                            ]
+            else:
+                amount_wht = amount.Amount(row['amount_y'], currency)
+                # make the postings, three for dividend/ wht transactions
+                postings = [data.Posting(self.getDivIncomeAcconut(currency,
+                                                                symbol),
+                                        -amount_div, None, None, None, None),
+                            data.Posting(self.getWHTAccount(symbol),
+                                        -amount_wht, None, None, None, None),
+                            data.Posting(self.getLiquidityAccount(currency),
+                                        AmountAdd(amount_div, amount_wht),
+                                        None, None, None, None)
+                            ]
             meta = data.new_metadata(
                 'dividend', 0, {'isin': isin, 'per_share': pershare})
             divTransactions.append(
