@@ -177,7 +177,6 @@ class PFGImporter(importer.ImporterProtocol):
             for i, row in enumerate(reader):
                 if len(row) < 5:  # "end" of bank statment or empty line
                     continue
-                print(i,len(row))
                 meta = data.new_metadata(file_.name, i)
                 credit = DecimalOrZero(row[2])
                 debit = DecimalOrZero(row[3])
