@@ -82,7 +82,6 @@ class PFGImporter(importer.ImporterProtocol):
 
     def identify(self, file_):
         check = self.checkForAccount(file_)
-        logging.info(f"identify PFG importer with file {file_.name}: {check}")
         return check
 
     def checkForAccount(self, file_):
