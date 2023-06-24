@@ -171,21 +171,21 @@ class PFGImporter(importer.ImporterProtocol):
             # 4 :  Value
             # 5 :  Balance in CHF
 
+            first_transaction = True  # the first tx in the csv is the latest
             # Data entries
             for i, row in enumerate(reader):
+                if len(row) < 5:  # "end" of bank statment or empty line
+                    continue
                 meta = data.new_metadata(file_.name, i)
-                if len(row) == 0:  # "end" of bank statment
-                    break
                 credit = DecimalOrZero(row[2])
                 debit = DecimalOrZero(row[3])
                 total = credit+debit  # mind PF sign convention
                 date = datetime.strptime(row[0], self.date_format).date()
                 amount = Amount(total, self.currency)
                 description = row[1]
-                # pdb.set_trace()
                 # get closing balance, if available
                 # i just happens that the first trasaction contains the latest balance
-                if (i == 0) and (len(row) >= 5) and (row[5] != ''):
+                if (first_transaction == True) & (len(row)==6):
                     balance = Amount(DecimalOrZero(row[5]), self.currency)
                     entries.append(
                         data.Balance(
@@ -196,6 +196,7 @@ class PFGImporter(importer.ImporterProtocol):
                             balance,
                             None,
                             None))
+                    first_transaction = False
 
                 # prepare/ make the transaction
                 d = dict(amount=amount,

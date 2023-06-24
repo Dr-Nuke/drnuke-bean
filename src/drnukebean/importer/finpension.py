@@ -86,7 +86,8 @@ class FinPensionImporter(importer.ImporterProtocol):
     def getFeesAccount(self, currency):
         return ':'.join([self.main_account.replace('Assets', 'Expenses'), self.fees_suffix, currency])
 
-    def file_account(self, _):
+    def file_account(self, file):
+        self.fix_accounts(file)
         return self.main_account or self.root_account
 
     def fix_accounts(self, file):
