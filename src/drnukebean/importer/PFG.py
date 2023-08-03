@@ -119,7 +119,8 @@ class PFGImporter(importer.ImporterProtocol):
     def getLanguage(self, file_):
         # find out which language the report is in based on the first line
         langdict = {'Datum von:': 'DE',
-                    'Date from:': 'EN'}
+                    'Date from:': 'EN',
+                    'Buchungsart': 'DE'}
         try:
             with open(file_.name, encoding=self.file_encoding) as f:
                 line = f.readline()
