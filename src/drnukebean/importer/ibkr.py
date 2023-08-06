@@ -273,7 +273,10 @@ class IBKRImporter(importer.ImporterProtocol):
 
             text = row['description_x']
             # Find ISIN in description in parentheses
-            isin = re.findall('\(([a-zA-Z]{2}[a-zA-Z0-9]{9}\d)\)', text)[0]
+            isin = "Unknown ISIN"
+            isins = re.findall('\(([a-zA-Z]{2}[a-zA-Z0-9]{9}\d)\)', text)
+            if len(isins) > 0:
+                isin = isins[0]
             pershare_match = re.search('(\d*[.]\d*)(\D*)(PER SHARE)',
                                        text, re.IGNORECASE)
             # payment in lieu of a dividend does not have a PER SHARE in description
