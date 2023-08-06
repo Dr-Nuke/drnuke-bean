@@ -96,14 +96,16 @@ class PFGImporter(importer.ImporterProtocol):
 
             with f as fd:
                 reader = csv.reader(fd, delimiter=self.delimiter)
-                L = [3]  # row index in which iban is found
+                L = [1,3]  # row index in which iban is found
                 C = 1  # column index in which iban is found
                 for i, line in enumerate(reader):
                     if i in L:
                         try:
-                            return line[C] == self.iban
+                            if line[C] == self.iban:
+                                return True
                         except IndexError:
                             return False
+                return False
 
         except (UnicodeDecodeError, IOError) as e:
             if isinstance(e, UnicodeDecodeError):
@@ -116,7 +118,8 @@ class PFGImporter(importer.ImporterProtocol):
     def getLanguage(self, file_):
         # find out which language the report is in based on the first line
         langdict = {'Datum von:': 'DE',
-                    'Date from:': 'EN'}
+                    'Date from:': 'EN',
+                    'Buchungsart': 'DE'}
         try:
             with open(file_.name, encoding=self.file_encoding) as f:
                 line = f.readline()
