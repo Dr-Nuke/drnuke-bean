@@ -168,38 +168,23 @@ class PFGImporter(importer.ImporterProtocol):
             cols = next(reader)
             # headers for english files:
             # 0 :  Booking date
-            # 1 :  Notification text
-            # 2 :  Credit in CHF
-            # 3 :  Debit in CHF
-            # 4 :  Value
-            # 5 :  Balance in CHF
+            # 1 :  Booking type
+            # 2 :  Notification text
+            # 3 :  Credit in CHF
+            # 4 :  Debit in CHF
 
-            first_transaction = True  # the first tx in the csv is the latest
+
             # Data entries
             for i, row in enumerate(reader):
                 if len(row) < 5:  # "end" of bank statment or empty line
                     continue
                 meta = data.new_metadata(file_.name, i)
-                credit = DecimalOrZero(row[2])
+                credit = DecimalOrZero(row[4])
                 debit = DecimalOrZero(row[3])
                 total = credit+debit  # mind PF sign convention
                 date = datetime.strptime(row[0], self.date_format).date()
                 amount = Amount(total, self.currency)
-                description = row[1]
-                # get closing balance, if available
-                # i just happens that the first trasaction contains the latest balance
-                if (first_transaction == True) & (len(row)==6):
-                    balance = Amount(DecimalOrZero(row[5]), self.currency)
-                    entries.append(
-                        data.Balance(
-                            meta,
-                            # see tariochtools EC imp.
-                            date + timedelta(days=1),
-                            self.balance_account,
-                            balance,
-                            None,
-                            None))
-                    first_transaction = False
+                description = row[2]
 
                 # prepare/ make the transaction
                 d = dict(amount=amount,
