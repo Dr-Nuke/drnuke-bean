@@ -135,11 +135,8 @@ class PFCCImporter(importer.ImporterProtocol):
 
             line = next(reader)  # account info, ignore
             line = next(reader)  # card info, ignore
-            line = next(reader)  # date info
-            dates = line[1].split(' - ')
 
-            self._date_from = datetime.strptime(dates[0], '%d.%m.%Y').date()
-            self._date_to = datetime.strptime(dates[1], '%d.%m.%Y').date()
+            # @dates: PFs Aug'23 format changes            
 
             # get the headers fot the actual transaction table
             cols = next(reader)
@@ -150,7 +147,7 @@ class PFCCImporter(importer.ImporterProtocol):
             # 3 Lastschrift in CHF
             # 4 Betrag in CHF
 
-            if cols[4][-3:] != self.currency:
+            if cols[3][-3:] != self.currency:
                 print('Importer vs. bankstatement currency: {} {} in {}'.format(
                     self.currency, line[4][-3:], file_.name))
                 return []
@@ -173,41 +170,35 @@ class PFCCImporter(importer.ImporterProtocol):
                 amount = Amount(total, self.currency)
 
                 description = row[1]
-                # pdb.set_trace()
-                # get closing balance, if available
-                if (row[1] == self.tags['Saldovortrag'][self.language]):
-                    balance = Amount(-DecimalOrZero(row[3]), self.currency)
-                    entries.append(
-                        data.Balance(
-                            meta,
-                            # see tariochtools EC imp.
-                            date + timedelta(days=1),
-                            self.account,
-                            balance,
-                            None,
-                            None))
-                else:    # if not balance, it's a transaction
-                    # prepare/ make statement
-                    d = dict(amount=amount,
-                             account=self.account,
-                             meta=meta,
-                             flag=self.FLAG,
-                             narration=description,
-                             payee='',
-                             date=date,
-                             )
+                
+                
+                d = dict(amount=amount,
+                        account=self.account,
+                        meta=meta,
+                        flag=self.FLAG,
+                        narration=description,
+                        payee='',
+                        date=date,
+                        postings=[data.Posting(self.account,
+                                            amount,
+                                            None,
+                                            None,
+                                            None,
+                                            None)]
+                        )
 
+                if self.manual_fixes is not None:
                     d = self.manual_fixes(d)
-
-                    trans = data.Transaction(d['meta'],
-                                             d['date'],
-                                             d['flag'],
-                                             remove_spaces(d['payee']),
-                                             remove_spaces(d['narration']),
-                                             data.EMPTY_SET,
-                                             data.EMPTY_SET,
-                                             d['postings']
-                                             )
-                    entries.append(trans)
+                    
+                trans = data.Transaction(d['meta'],
+                                        d['date'],
+                                        d['flag'],
+                                        remove_spaces(d['payee']),
+                                        remove_spaces(d['narration']),
+                                        data.EMPTY_SET,
+                                        data.EMPTY_SET,
+                                        d['postings']
+                                        )
+                entries.append(trans)
 
         return entries

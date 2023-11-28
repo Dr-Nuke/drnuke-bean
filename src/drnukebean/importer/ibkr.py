@@ -51,6 +51,7 @@ class IBKRImporter(importer.ImporterProtocol):
                  depositAccount='',
                  suppressClosedLotPrice=False,
                  symbolMap={},
+                 configFile='ibkr.yaml'
                  ):
 
         self.Mainaccount = Mainaccount  # main IB account in beancount
@@ -71,9 +72,13 @@ class IBKRImporter(importer.ImporterProtocol):
         self.suppressClosedLotPrice = suppressClosedLotPrice
         self.flag = '*'
         self.symbolMap = symbolMap
+        self.configFile = configFile
 
     def identify(self, file):
-        return 'ibkr.yaml' == path.basename(file.name)
+        return self.configFile == path.basename(file.name)
+
+    def name(self) -> str:
+        return self.configFile
 
     def getLiquidityAccount(self, currency):
         # Assets:Invest:IB:USD
@@ -422,11 +427,11 @@ class IBKRImporter(importer.ImporterProtocol):
             symbol = row['symbol']
             curr_prim, curr_sec = getForexCurrencies(symbol)
             currency_IBcommision = row['ibCommissionCurrency']
-            proceeds = amount.Amount(row['proceeds'], curr_sec)
-            quantity = amount.Amount(row['quantity'], curr_prim)
+            proceeds = amount.Amount(round(row['proceeds'],2), curr_sec)
+            quantity = amount.Amount(round(row['quantity'],2), curr_prim)
             price = amount.Amount(row['tradePrice'], curr_sec)
             commission = amount.Amount(
-                row['ibCommission'], currency_IBcommision)
+                round(row['ibCommission'],2), currency_IBcommision)
             buysell = row['buySell'].name
 
             cost = position.CostSpec(

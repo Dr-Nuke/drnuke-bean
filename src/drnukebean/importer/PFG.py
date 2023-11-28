@@ -3,6 +3,7 @@ import csv
 from pathlib import Path
 import re
 from datetime import datetime, timedelta
+import logging
 
 from beancount.core import data
 from beancount.core.amount import Amount
@@ -30,8 +31,11 @@ def DecimalOrZero(value):
     except:
         return Decimal('0.00')
 
+
 def strip_new_pf_format(s):
-        return s.strip("=").strip('"')
+    return s.strip("=").strip('"')
+
+
 class PFGImporter(importer.ImporterProtocol):
     """
     Beancount Importer for the Postfinance giro account bank statements
@@ -74,11 +78,12 @@ class PFGImporter(importer.ImporterProtocol):
 
     def file_date(self, file_):
         self.extract(file_)
-
         return self._date_from
 
     def identify(self, file_):
-        return self.checkForAccount(file_)
+        check = self.checkForAccount(file_)
+        logging.info(f"identify PFG importer with file {file_.name}: {check}")
+        return check
 
     def checkForAccount(self, file_):
         # find amatch between the config's IBAN and the parsed file's iban
@@ -92,18 +97,21 @@ class PFGImporter(importer.ImporterProtocol):
 
             with f as fd:
                 reader = csv.reader(fd, delimiter=self.delimiter)
-                L = [3]  # row index in which iban is found
+                L = [1,3]  # row index in which iban is found
                 C = 1  # column index in which iban is found
                 for i, line in enumerate(reader):
                     if i in L:
                         try:
-                            return line[C] == self.iban
+                            if line[C] == self.iban:
+                                return True
                         except IndexError:
                             return False
+                return False
 
         except (UnicodeDecodeError, IOError) as e:
             if isinstance(e, UnicodeDecodeError):
-                print(f'***** file {file_.name} in PFGImporter throws UnicodeDecodeError for encoding {e.encoding} of byte {e.object[e.start:e.end]} at position {e.start} and reason {e.reason}')
+                print(
+                    f'***** file {file_.name} in PFGImporter throws UnicodeDecodeError for encoding {e.encoding} of byte {e.object[e.start:e.end]} at position {e.start} and reason {e.reason}')
             elif isinstance(e, IOError):
                 print('***** Cannot open/read {}'.format(file_.name))
             return False
@@ -111,7 +119,8 @@ class PFGImporter(importer.ImporterProtocol):
     def getLanguage(self, file_):
         # find out which language the report is in based on the first line
         langdict = {'Datum von:': 'DE',
-                    'Date from:': 'EN'}
+                    'Date from:': 'EN',
+                    'Buchungsart': 'DE'}
         try:
             with open(file_.name, encoding=self.file_encoding) as f:
                 line = f.readline()
@@ -141,10 +150,12 @@ class PFGImporter(importer.ImporterProtocol):
 
             reader = csv.reader(fd, delimiter=self.delimiter)
 
-            line = next(reader) # from date
-            self._date_from = datetime.strptime(strip_new_pf_format(line[1]), self.date_format).date()
+            line = next(reader)  # from date
+            self._date_from = datetime.strptime(
+                strip_new_pf_format(line[1]), self.date_format).date()
             line = next(reader)   # to date
-            self._date_to = datetime.strptime(strip_new_pf_format(line[1]), self.date_format).date()
+            self._date_to = datetime.strptime(
+                strip_new_pf_format(line[1]), self.date_format).date()
 
             line = next(reader)  # ignore booking type line
             line = next(reader)  # ignoring IBAN line
@@ -164,22 +175,22 @@ class PFGImporter(importer.ImporterProtocol):
             # 4 :  Value
             # 5 :  Balance in CHF
 
+            first_transaction = True  # the first tx in the csv is the latest
             # Data entries
             for i, row in enumerate(reader):
+                if len(row) < 5:  # "end" of bank statment or empty line
+                    continue
                 meta = data.new_metadata(file_.name, i)
-                if len(row) == 0:  # "end" of bank statment
-                    break
                 credit = DecimalOrZero(row[2])
                 debit = DecimalOrZero(row[3])
                 total = credit+debit  # mind PF sign convention
                 date = datetime.strptime(row[0], self.date_format).date()
                 amount = Amount(total, self.currency)
-                balance = Amount(DecimalOrZero(row[5]), self.currency)
                 description = row[1]
-                # pdb.set_trace()
                 # get closing balance, if available
                 # i just happens that the first trasaction contains the latest balance
-                if (i == 0) & (row[5] != ''):
+                if (first_transaction == True) & (len(row)==6):
+                    balance = Amount(DecimalOrZero(row[5]), self.currency)
                     entries.append(
                         data.Balance(
                             meta,
@@ -189,6 +200,7 @@ class PFGImporter(importer.ImporterProtocol):
                             balance,
                             None,
                             None))
+                    first_transaction = False
 
                 # prepare/ make the transaction
                 d = dict(amount=amount,
@@ -198,9 +210,16 @@ class PFGImporter(importer.ImporterProtocol):
                          narration=description,
                          payee='',
                          date=date,
+                         postings=[data.Posting(self.account,
+                                                amount,
+                                                None,
+                                                None,
+                                                None,
+                                                None)]
                          )
 
-                d = self.manual_fixes(d)
+                if self.manual_fixes is not None:
+                    d = self.manual_fixes(d)
 
                 trans = data.Transaction(d['meta'],
                                          d['date'],
@@ -213,4 +232,3 @@ class PFGImporter(importer.ImporterProtocol):
                                          )
                 entries.append(trans)
         return entries
-
