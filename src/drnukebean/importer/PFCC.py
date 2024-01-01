@@ -167,7 +167,7 @@ class PFCCImporter(importer.ImporterProtocol):
                 debit = DecimalOrZero(row[3])
                 total = credit-debit  # mind PF sign convention
                 date = datetime.strptime(row[0], '%Y-%m-%d').date()
-                amount = Amount(total, self.currency)
+                amount = Amount(-total, self.currency)
 
                 description = row[1]
                 
