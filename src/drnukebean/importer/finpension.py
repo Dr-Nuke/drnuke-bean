@@ -126,7 +126,7 @@ class FinPensionImporter(importer.ImporterProtocol):
         # abit messy since Finpension uses different tags in pillar 2/3a
         trades = df[df.Category.isin(["Portfolio Transaction",'Buy','Sell'])]
         deposits = df[df.Category.isin(["Transfer vested benefits",'Deposit'])]
-        fees = df[df.Category.isin(["Implementation fees",'Flat-rate administrative fee'])]
+        fees = df[df.Category.isin(["Implementation fees",'Flat-rate administrative fee','Flat-rate administration fee'])]
         interests = df[df.Category == "Interests"]
         dividends = df[df.Category.isin(["Dividend and Interest Distributions",'Dividend'])]
 
