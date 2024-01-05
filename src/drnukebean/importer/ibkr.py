@@ -116,10 +116,10 @@ class IBKRImporter(importer.ImporterProtocol):
                 queryId = config['queryId']
         except:
             warnings.warn('cannot read IBKR credentials file. Check filepath.')
-            return[]
+            return []
 
         # get prices of existing transactions, in case we sell something
-        #priceLookup = PriceLookup(existing_entries, config['baseCcy'])
+        # priceLookup = PriceLookup(existing_entries, config['baseCcy'])
 
         if self.filepath is None:
             # get the report from IB. might take a while, when IB is queuing due to
@@ -133,11 +133,12 @@ class IBKRImporter(importer.ImporterProtocol):
             except ResponseCodeError as E:
                 print(E)
                 print('aborting.')
-                return[]
-            except:
-                warnings.warn('could not fetch IBKR Statement. exiting.')
+                return []
+            except Exception as E:
+                warnings.warn(f'could not fetch IBKR Statement. exiting. {E}')
+
                 # another option would be to try again
-                return[]
+                return []
             assert isinstance(statement, Types.FlexQueryResponse)
         else:
             print('**** loading from pickle')
@@ -184,7 +185,7 @@ class IBKRImporter(importer.ImporterProtocol):
         # Cash dividend is split from payment in lieu of a dividend.
         # Match them accordingly with the corresponding wht rows.
         # Make a copy of dataframe prior to append a column to avoid SettingWithCopyWarning
-        div = ct[ct['type'].map(lambda t:t == CashAction.DIVIDEND
+        div = ct[ct['type'].map(lambda t: t == CashAction.DIVIDEND
                                 or t == CashAction.PAYMENTINLIEU)].copy()   # dividends only (both cash and payment in lieu of d.)
         # Duplicate column to match later with wht
         div['__divtype__'] = div['type']
@@ -305,12 +306,14 @@ class IBKRImporter(importer.ImporterProtocol):
                             ]
             meta = data.new_metadata(
                 'dividend', 0, {'isin': isin, 'per_share': pershare})
+            in_lieu_flag = " in lieu" if re.match(
+                '.*payment in lieu of dividend', row["description_x"], re.IGNORECASE) else ""
             divTransactions.append(
                 data.Transaction(meta,  # could add div per share, ISIN,....
                                  row['reportDate'],
                                  self.flag,
                                  symbol,     # payee
-                                 'Dividend '+symbol,
+                                 'Dividend '+symbol + in_lieu_flag,
                                  data.EMPTY_SET,
                                  data.EMPTY_SET,
                                  postings
@@ -404,11 +407,11 @@ class IBKRImporter(importer.ImporterProtocol):
             symbol = row['symbol']
             curr_prim, curr_sec = getForexCurrencies(symbol)
             currency_IBcommision = row['ibCommissionCurrency']
-            proceeds = amount.Amount(round(row['proceeds'],2), curr_sec)
-            quantity = amount.Amount(round(row['quantity'],2), curr_prim)
+            proceeds = amount.Amount(round(row['proceeds'], 2), curr_sec)
+            quantity = amount.Amount(round(row['quantity'], 2), curr_prim)
             price = amount.Amount(row['tradePrice'], curr_sec)
             commission = amount.Amount(
-                round(row['ibCommission'],2), currency_IBcommision)
+                round(row['ibCommission'], 2), currency_IBcommision)
             buysell = row['buySell'].name
 
             cost = position.CostSpec(
@@ -543,7 +546,8 @@ class IBKRImporter(importer.ImporterProtocol):
                     break
 
                 cost = position.CostSpec(
-                    number_per=0 if self.suppressClosedLotPrice else round(clo['tradePrice'],2),
+                    number_per=0 if self.suppressClosedLotPrice else round(
+                        clo['tradePrice'], 2),
                     number_total=None,
                     currency=clo['currency'],
                     date=clo['openDateTime'].date(),
@@ -667,7 +671,7 @@ def AmountAdd(A1, A2):
         quant = A1.number+A2.number
         return amount.Amount(quant, A1.currency)
     else:
-        raise('Cannot add amounts of differnent currencies: {} and {}'.format(
+        raise ('Cannot add amounts of differnent currencies: {} and {}'.format(
             A1.currency, A1.currency))
 
 
