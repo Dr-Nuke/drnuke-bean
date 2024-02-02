@@ -15,6 +15,7 @@ import warnings
 import pickle
 import re
 import numpy as np
+import logging
 
 import yaml
 from os import path
@@ -148,8 +149,7 @@ class IBKRImporter(importer.ImporterProtocol):
                 response = client.download(token, queryId)
                 statement = parser.parse(response)
             except ResponseCodeError as E:
-                print(E)
-                print('aborting.')
+                logging.exception('Error fetching report, aborting')
                 return[]
             except:
                 warnings.warn('could not fetch IBKR Statement. exiting.')
