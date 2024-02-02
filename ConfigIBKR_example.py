@@ -6,12 +6,15 @@ from drnukebean.importer import ibkr
 
 # your ibkr.yaml file schould look like 
 # token: 123456789101112131415
-# queryID: 123456
+# queryId: 123456
 # baseCcy: XXX # 'USD', or 'CHF'
 
 # Your IBKR flex Query needs to be XML and have the following fields selected:
+# Section "Cash Transactions"
 # ct_columns=['type', 'currency', 'description', 'isin', 'amount', 'symbol','reportDate']
+# Section "Cash Report"
 # cr_columns=['currency', 'fromDate','toDate', 'endingCash']
+# Section "Trades"
 # tr_columns=['buySell', 'currency', 'symbol', 'description', 'tradeDate', 'quantity',
 #        'tradePrice', 'ibCommission', 'ibCommissionCurrency', 'notes', 'cost',
 #        'openDateTime', 'levelOfDetail', 'ibOrderID', 'proceeds', 
@@ -27,7 +30,6 @@ IBKR = ibkr.IBKRImporter(
     Mainaccount = 'Assets:Invest:IB', # main IB account
     divSuffix = 'Div',          # suffix for dividend account, like
                                 # Assets:Invest:IB:VT:Div
-    WHTSuffix = 'WTax',         # suffix for WHT account
     interestSuffix='Interest',  # suffix for interest income account
     PnLSuffix='PnL',              # suffix for PnL Account
     FeesSuffix='Fees',          # suffix for fees & commisions
