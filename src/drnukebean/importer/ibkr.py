@@ -284,6 +284,7 @@ class IBKRImporter(importer.ImporterProtocol):
 
         divTransactions = []
         for idx, row in match.iterrows():
+            dx = row.get('description_x', '')
             symbol = self.mapSymbol(row['symbol'])
             if with_wht:
                 currency = row['currency_x']
@@ -295,7 +296,7 @@ class IBKRImporter(importer.ImporterProtocol):
                     continue
                 amount_div = amount.Amount(row['amount_x'], currency)
                 amount_wht = amount.Amount(row['amount_y'], currency)
-                text = row['description_x']
+                text = dx
             else:
                 currency = row['currency']
                 amount_div = amount.Amount(row['amount'], currency)
@@ -329,7 +330,7 @@ class IBKRImporter(importer.ImporterProtocol):
             meta = data.new_metadata(
                 'dividend', 0, {'isin': isin, 'per_share': pershare})
             in_lieu_flag = " in lieu" if re.match(
-                '.*payment in lieu of dividend', row["description_x"], re.IGNORECASE) else ""
+                '.*payment in lieu of dividend', dx, re.IGNORECASE) else ""
             divTransactions.append(
                 data.Transaction(meta,  # could add div per share, ISIN,....
                                  row['reportDate'],
