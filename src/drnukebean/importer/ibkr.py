@@ -15,6 +15,7 @@ import warnings
 import pickle
 import re
 import numpy as np
+import logging
 
 import yaml
 from os import path
@@ -41,22 +42,27 @@ class IBKRImporter(importer.ImporterProtocol):
                  Mainaccount=None,  # for example Assets:Invest:IB
                  currency='CHF',
                  divSuffix='Div',  # suffix for dividend Account , like Assets:Invest:IB:VT:Div
+                 DividendsAccount=None,
                  interestSuffix='Interest',
                  WHTAccount=None,
                  FeesSuffix='Fees',
+                 FeesAccount=None,
                  PnLSuffix='PnL',
                  fpath=None,  #
                  depositAccount='',
                  suppressClosedLotPrice=False,
+                 symbolMap={},
                  configFile='ibkr.yaml'
                  ):
 
         self.Mainaccount = Mainaccount  # main IB account in beancount
         self.currency = currency        # main currency of IB account
         self.divSuffix = divSuffix
+        self.DividendsAccount = DividendsAccount
         self.WHTAccount = WHTAccount
         self.interestSuffix = interestSuffix
         self.FeesSuffix = FeesSuffix
+        self.FeesAccount = FeesAccount
         self.PnLSuffix = PnLSuffix
         self.filepath = fpath             # optional file path specification,
         # if flex query should not be used online (loading time...)
@@ -66,6 +72,7 @@ class IBKRImporter(importer.ImporterProtocol):
         # deposit transactions, provide a True value
         self.suppressClosedLotPrice = suppressClosedLotPrice
         self.flag = '*'
+        self.symbolMap = symbolMap
         self.configFile = configFile
 
     def identify(self, file):
@@ -78,9 +85,16 @@ class IBKRImporter(importer.ImporterProtocol):
         # Assets:Invest:IB:USD
         return ':'.join([self.Mainaccount, currency])
 
+    def mapSymbol(self, symbol):
+        return self.symbolMap.get(symbol, symbol)
+
     def getDivIncomeAcconut(self, currency, symbol):
-        # Income:Invest:IB:VTI:Div
-        return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.divSuffix])
+        if self.DividendsAccount:
+            return self.DividendsAccount
+        else:
+            # Income:Invest:IB:VTI:Div
+            return ':'.join([self.Mainaccount.replace('Assets', 'Income'),
+                            self.mapSymbol(symbol), self.divSuffix])
 
     def getInterestIncomeAcconut(self, currency):
         # Income:Invest:IB:USD
@@ -88,19 +102,23 @@ class IBKRImporter(importer.ImporterProtocol):
 
     def getAssetAccount(self, symbol):
         # Assets:Invest:IB:VTI
-        return ':'.join([self.Mainaccount, symbol])
+        return ':'.join([self.Mainaccount, self.mapSymbol(symbol)])
 
     def getWHTAccount(self, symbol):
         # Expenses:Invest:IB:VTI:WTax
-        return ':'.join([self.WHTAccount, symbol])
+        return ':'.join([self.WHTAccount, self.mapSymbol(symbol)])
 
     def getFeesAccount(self, currency):
-        # Expenses:Invest:IB:Fees:USD
-        return ':'.join([self.Mainaccount.replace('Assets', 'Expenses'), self.FeesSuffix, currency])
+        if self.FeesAccount:
+            return self.FeesAccount
+        else:
+            # Expenses:Invest:IB:Fees:USD
+            return ':'.join([self.Mainaccount.replace('Assets', 'Expenses'), self.FeesSuffix, currency])
 
     def getPNLAccount(self, symbol):
         # Expenses:Invest:IB:Fees:USD
-        return ':'.join([self.Mainaccount.replace('Assets', 'Income'), symbol, self.PnLSuffix])
+        return ':'.join([self.Mainaccount.replace('Assets', 'Income'),
+                        self.mapSymbol(symbol), self.PnLSuffix])
 
     def file_account(self, _):
         return self.Mainaccount
@@ -131,12 +149,10 @@ class IBKRImporter(importer.ImporterProtocol):
                 response = client.download(token, queryId)
                 statement = parser.parse(response)
             except ResponseCodeError as E:
-                print(E)
-                print('aborting.')
+                logging.exception('Error fetching report, aborting')
                 return []
             except Exception as E:
                 warnings.warn(f'could not fetch IBKR Statement. exiting. {E}')
-
                 # another option would be to try again
                 return []
             assert isinstance(statement, Types.FlexQueryResponse)
@@ -198,7 +214,9 @@ class IBKRImporter(importer.ImporterProtocol):
                                                     CashAction.PAYMENTINLIEU if re.match('.*payment in lieu of dividend', d, re.IGNORECASE)
                                                     else CashAction.DIVIDEND)
 
-        if len(div) == 0:
+        if len(div) != len(wht):
+            matches = self.Dividends(div, with_wht=False)
+        elif len(div) == 0:
             # in case of no dividends,
             matches = []
         else:
@@ -237,7 +255,11 @@ class IBKRImporter(importer.ImporterProtocol):
             currency = row['currency']
             amount_ = amount.Amount(row['amount'], currency)
             text = row['description']
-            month = re.findall('\w{3} \d{4}', text)[0]
+            month = re.findall('\w{3} \d{4}', text)
+            if month:
+                month = month[0]
+            else:
+                month = text
 
             # make the postings, two for fees
             postings = [data.Posting(self.getFeesAccount(currency),
@@ -256,23 +278,30 @@ class IBKRImporter(importer.ImporterProtocol):
                                  postings))
         return feeTransactions
 
-    def Dividends(self, match):
+    def Dividends(self, match, with_wht=True):
         # this function crates Dividend transactions from IBKR data
         # make dividend & WHT transactions
 
         divTransactions = []
         for idx, row in match.iterrows():
-            currency = row['currency_x']
-            currency_wht = row['currency_y']
-            if not pd.isna(currency_wht) and currency != currency_wht:
-                warnings.warn(f"Warnging: Dividend currency {currency} " +
-                              f"mismatches WHT currency {currency_wht}. Skipping this Transaction")
-                continue
-            symbol = row['symbol']
+            dx = row.get('description_x', '')
+            symbol = self.mapSymbol(row['symbol'])
+            if with_wht:
+                currency = row['currency_x']
+                currency_wht = row['currency_y']
+                if currency != currency_wht:
+                    warnings.warn(('Warning: Dividend currency {} ' +
+                                   'mismatches WHT currency {}. Skipping this' +
+                                   'Transaction').format(currency, currency_wht))
+                    continue
+                amount_div = amount.Amount(row['amount_x'], currency)
+                amount_wht = amount.Amount(row['amount_y'], currency)
+                text = dx
+            else:
+                currency = row['currency']
+                amount_div = amount.Amount(row['amount'], currency)
+                text = row['description']
 
-            amount_div = amount.Amount(row['amount_x'], currency)
-
-            text = row['description_x']
             # Find ISIN in description in parentheses
             isin = "Unknown ISIN"
             isins = re.findall('\(([a-zA-Z]{2}[a-zA-Z0-9]{9}\d)\)', text)
@@ -283,31 +312,28 @@ class IBKRImporter(importer.ImporterProtocol):
             # payment in lieu of a dividend does not have a PER SHARE in description
             pershare = pershare_match.group(1) if pershare_match else ''
 
-            if pd.isna(row['amount_y']):
-                # make the postings, for transactions without wht
-                postings = [data.Posting(self.getDivIncomeAcconut(currency,
-                                                                symbol),
-                                        -amount_div, None, None, None, None),
-                            data.Posting(self.getLiquidityAccount(currency),
-                                        amount_div,
-                                        None, None, None, None)
-                            ]
+            # make the postings, three for dividend/ wht transactions
+            postings = [data.Posting(self.getDivIncomeAcconut(currency,
+                                                              symbol),
+                                     -amount_div, None, None, None, None),
+                        ]
+            if with_wht:
+                postings.extend([
+                        data.Posting(self.getWHTAccount(symbol),
+                                     -amount_wht, None, None, None, None),
+                        data.Posting(self.getLiquidityAccount(currency),
+                                     AmountAdd(amount_div, amount_wht),
+                                     None, None, None, None)
+                        ])
             else:
-                amount_wht = amount.Amount(row['amount_y'], currency)
-                # make the postings, three for dividend/ wht transactions
-                postings = [data.Posting(self.getDivIncomeAcconut(currency,
-                                                                symbol),
-                                        -amount_div, None, None, None, None),
-                            data.Posting(self.getWHTAccount(symbol),
-                                        -amount_wht, None, None, None, None),
-                            data.Posting(self.getLiquidityAccount(currency),
-                                        AmountAdd(amount_div, amount_wht),
-                                        None, None, None, None)
-                            ]
+                postings.append(
+                        data.Posting(self.getLiquidityAccount(currency),
+                                     amount_div, None, None, None, None)
+                        )
             meta = data.new_metadata(
                 'dividend', 0, {'isin': isin, 'per_share': pershare})
             in_lieu_flag = " in lieu" if re.match(
-                '.*payment in lieu of dividend', row["description_x"], re.IGNORECASE) else ""
+                '.*payment in lieu of dividend', dx, re.IGNORECASE) else ""
             divTransactions.append(
                 data.Transaction(meta,  # could add div per share, ISIN,....
                                  row['reportDate'],
@@ -470,7 +496,7 @@ class IBKRImporter(importer.ImporterProtocol):
             # continue # debugging
             currency = row['currency']
             currency_IBcommision = row['ibCommissionCurrency']
-            symbol = row['symbol']
+            symbol = self.mapSymbol(row['symbol'])
             proceeds = amount.Amount(row['proceeds'].__round__(2), currency)
             commission = amount.Amount(
                 (row['ibCommission'].__round__(2)), currency_IBcommision)
@@ -524,7 +550,7 @@ class IBKRImporter(importer.ImporterProtocol):
             proceeds = amount.Amount(row['proceeds'].__round__(2), currency)
             commission = amount.Amount(
                 (row['ibCommission'].__round__(2)), currency_IBcommision)
-            quantity = amount.Amount(row['quantity'], symbol)
+            quantity = amount.Amount(row['quantity'], self.mapSymbol(symbol))
             price = amount.Amount(row['tradePrice'], currency)
             text = row['description']
             date = row['dateTime'].date()
@@ -566,8 +592,8 @@ class IBKRImporter(importer.ImporterProtocol):
                 warnings.warn(f"Lots matching failure: sell index={idx}")
 
             postings = [
-                # data.Posting(self.getAssetAccount(symbol),  # this first posting is probably wrong
-                # quantity, None, price, None, None),
+                data.Posting(self.getAssetAccount(symbol),  # this first posting is probably wrong
+                quantity, None, price, None, None),
                 data.Posting(self.getLiquidityAccount(currency),
                              proceeds, None, None, None, None)
             ] +  \
@@ -584,7 +610,7 @@ class IBKRImporter(importer.ImporterProtocol):
                 data.Transaction(data.new_metadata('Buy', 0),
                                  date,
                                  self.flag,
-                                 symbol,     # payee
+                                 self.mapSymbol(symbol),     # payee
                                  ' '.join(
                                      ['SELL', quantity.to_string(), '@', price.to_string()]),
                                  data.EMPTY_SET,
