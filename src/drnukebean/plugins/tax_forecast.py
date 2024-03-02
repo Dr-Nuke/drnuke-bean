@@ -3,7 +3,7 @@ A beancount plugin to make predictions on tax liabilities in kanton zurich switz
 
 it uses a very messy config string like
 
-'{"taxable_accounts": ["Income:Jobs:Taxable:Salary", "Income:Jobs:Taxable:Bonus", "Income:Invest:IB:.*:Div"], "deductable_accounts": [], "taxable_assets_accounts": [], "tax_expenses_main_account": "Expenses:Taxes", "liability_account": "Liabilities:Tax", "year": 2022, "assets": 200000, "taxable_income": 100000, "witholding": 500, "municipality": 261, "marial_srtatus": "single", "n_children": 0, "tax_day_of_month": 24, "precision": 2}'
+'{"taxable_accounts": ["Income:Jobs:Taxable:Salary", "Income:Jobs:Taxable:Bonus", "Income:Invest:IB:.*:Div"], "deductable_accounts": [], "taxable_assets_accounts": [], "tax_expenses_main_account": "Expenses:Taxes", "liability_account": "Liabilities:Tax", "year": 2022, "api_year":2022 "assets": 200000, "taxable_income": 100000, "witholding": 500, "municipality": 261, "marial_srtatus": "single", "n_children": 0, "tax_day_of_month": 24, "precision": 2}'
 
 that can be generated with json.dumps(<config_dict>)
 
@@ -33,6 +33,7 @@ def tax_forecast(entries, options, config_str):
     config = eval(config_str, {}, {})
     today = datetime.datetime.today().date()
     year = config.get("year")
+    api_year = config.get("api_year")
 
     # get accounts (via open directives)
     accounts = {entry.account
@@ -74,7 +75,7 @@ def tax_forecast(entries, options, config_str):
         "isLiabilityLessThanAYear": False,
         "hasTaxSeparation": False,
         "hasQualifiedInvestments": False,
-        "taxYear": str(year),
+        "taxYear": str(api_year),
         "liabilityBegin": None,
         "liabilityEnd": None,
         "name": "",
@@ -93,7 +94,7 @@ def tax_forecast(entries, options, config_str):
 
     data_bund = {
         "isLiabilityLessThanAYearOrHasTaxSeparation": False,
-        "taxYear": str(year),
+        "taxYear": str(api_year),
         "name": "",
         "taxScale": str(marial_srtatus).upper(),
         "childrenNo": str(n_children),
@@ -121,8 +122,6 @@ def tax_forecast(entries, options, config_str):
                                          taxes_per_month,
                                          last_month_of_income)
 
-    # from beancount.parser import printer
-    # printer.print_entries(tax_transactions)
     entries.extend(tax_transactions)
     return entries, errors
 
