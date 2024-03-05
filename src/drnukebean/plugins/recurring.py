@@ -21,18 +21,22 @@ from beancount.core import data
 from beancount.core.amount import Amount
 from beancount.core.data import Transaction
 from beancount.parser import options
+from decimal import Decimal
 
 import datetime
 import pandas as pd
+import io
+from contextlib import redirect_stdout
 
 __plugins__ = ['recurring']
 
 
-def recurring(entries, options_map):
+def recurring(entries, options_map, config_str):
     # converts a txn into recurring txns of same amount sum
 
-    new_entries = []
     errors = []
+    new_entries = []
+
     for entry in entries:
         if isinstance(entry, data.Transaction) and 'recurring_start' in entry.meta:
             start_date = entry.meta['recurring_start']
@@ -48,6 +52,20 @@ def recurring(entries, options_map):
                 splits = [round(amount_orig / times, 2) for i in range(times-1)]
                 splits.append(amount_orig-sum(splits))
                 amounts[p.account] = splits
+
+            # experimental: correct for ronding errors
+            rounding_errors = []
+            for i,x in enumerate(zip(*[v for v in amounts.values()])):
+                rounding_errors.append(sum(x))
+            if not sum(rounding_errors) ==0:
+                with redirect_stdout(buffer):
+                    printer.print_entry(entry)
+                entry_str = buffer.getvalue()
+                raise AssertionError(f"rounding errors do not sum to zero for entry \n{entry_str} when split into splits {amounts}")
+            
+            if any([e != 0 for e in rounding_errors]):
+                last_posting = entry.postings[-1].account
+                amounts[last_posting] = [value - error for value, error in zip(amounts[last_posting],rounding_errors) ]             
 
             # prepare the meta
             dropkeys = ['recurring_start',
