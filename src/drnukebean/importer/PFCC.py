@@ -29,7 +29,7 @@ def fmt_number_de(value: str) -> Decimal:
 def DecimalOrZero(value):
     # for string to number conversion with empty strings
     try:
-        return Decimal(value)
+        return Decimal(value.replace("'",""))
     except:
         return Decimal(0.0)
 
