@@ -494,11 +494,11 @@ class IBKRImporter(importer.ImporterProtocol):
             currency = row['currency']
             currency_IBcommision = row['ibCommissionCurrency']
             symbol = self.mapSymbol(row['symbol'])
-            proceeds = amount.Amount(row['proceeds'].__round__(2), currency)
+            proceeds = amount.Amount(round(row['proceeds'],2), currency)
             commission = amount.Amount(
-                (row['ibCommission'].__round__(2)), currency_IBcommision)
+                (round(row['ibCommission'],2)), currency_IBcommision)
             quantity = amount.Amount(row['quantity'], symbol)
-            price = amount.Amount(row['tradePrice'], currency)
+            price = amount.Amount(round(row['tradePrice'],2), currency)
             text = row['description']
 
             number_per = D(row['tradePrice'])
@@ -544,11 +544,11 @@ class IBKRImporter(importer.ImporterProtocol):
             currency = row['currency']
             currency_IBcommision = row['ibCommissionCurrency']
             symbol = row['symbol']
-            proceeds = amount.Amount(row['proceeds'].__round__(2), currency)
+            proceeds = amount.Amount(round(row['proceeds'],2), currency)
             commission = amount.Amount(
-                (row['ibCommission'].__round__(2)), currency_IBcommision)
+                (round(row['ibCommission'],2)), currency_IBcommision)
             quantity = amount.Amount(row['quantity'], self.mapSymbol(symbol))
-            price = amount.Amount(row['tradePrice'], currency)
+            price = amount.Amount(round(row['tradePrice'],2), currency)
             text = row['description']
             date = row['dateTime'].date()
             number_per = D(row['tradePrice'])
