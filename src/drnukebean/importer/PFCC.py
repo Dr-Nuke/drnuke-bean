@@ -134,18 +134,22 @@ class PFCCImporter(importer.ImporterProtocol):
             reader = csv.reader(fd, delimiter=self.delimiter)
 
             line = next(reader)  # account info, ignore
-            line = next(reader)  # card info, ignore
-
-            # @dates: PFs Aug'23 format changes            
+            allowed_lines = ["Kartenkonto:", "Card account:"] # add your language
+            assert line[0] in allowed_lines, f"statement format changed in line {reader.line_num}: {line}" 
+            line = next(reader)
+            allowed_lines = ["Karte:", "Card:"] # add your language
+            assert line[0] in allowed_lines, f"statement format changed in line {reader.line_num}: {line}" 
+            line = next(reader) 
+            allowed_lines = ["Kategorie:", "Category:"] # add your language
+            assert line[0] in allowed_lines, f"statement format changed in line {reader.line_num}: {line}" 
+         
 
             # get the headers fot the actual transaction table
             cols = next(reader)
-            # headers for german files:
-            # 0 Datum
-            # 1 Bezeichnung
-            # 2 Gutschrift in CHF
-            # 3 Lastschrift in CHF
-            # 4 Betrag in CHF
+            cols_ger = ['Datum', 'Buchungsdetails', 'Gutschrift in CHF', 'Lastschrift in CHF', 'Label', 'Kategorie']
+            cols_eng = ['Date', 'Booking details', 'Credit in CHF', 'Debit in CHF', 'Tag', 'Category']
+            allowed_cols = list(zip(cols_ger, cols_eng))
+            assert all([cols[i] in allowed_cols[i] for i in range(len(cols))]), f"statement format changed in line {reader.line_num}: {line}" 
 
             if cols[3][-3:] != self.currency:
                 print('Importer vs. bankstatement currency: {} {} in {}'.format(
