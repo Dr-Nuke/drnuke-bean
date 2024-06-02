@@ -26,8 +26,11 @@ def fmt_number_de(value: str) -> Decimal:
 
 def DecimalOrZero(value):
     # for string to number conversion with empty strings
+    if not value:
+        return Decimal('0.00')
     try:
-        return Decimal(f'{float(value):.2f}')
+        value_no_thousands = value.replace("'","")
+        return Decimal(f'{float(value_no_thousands):.2f}')
     except:
         return Decimal('0.00')
 
@@ -188,7 +191,7 @@ class PFGImporter(importer.ImporterProtocol):
                 description = row[1]
                 # get closing balance, if available
                 # i just happens that the first trasaction contains the latest balance
-                if (first_transaction == True) & (len(row)==6):
+                if (first_transaction == True) & (len(row)==8):
                     balance = Amount(DecimalOrZero(row[5]), self.currency)
                     entries.append(
                         data.Balance(

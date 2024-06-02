@@ -114,9 +114,12 @@ def tax_forecast(entries, options, config_str):
             "taxableIncome": str(taxable_income_float),
             "ascertainedTaxableIncome": None,
         }
-        response_staat = query_zh_tax_api(url_staat, data_staat)
-        response_bund = query_zh_tax_api(url_bund, data_bund)
-
+        try:
+            response_staat = query_zh_tax_api(url_staat, data_staat)
+            response_bund = query_zh_tax_api(url_bund, data_bund)
+        except APIError:
+            logger.info("could not fetch tax info from API. Not providing tax forecast")
+            return entries, errors
         # extract relevant info and convert to monthly taxes
         taxes = {"Staats": response_staat.get('cantonalBaseTax').get('value'),
                  "Gemeinde": response_staat.get('municipalityTax').get('value'),
