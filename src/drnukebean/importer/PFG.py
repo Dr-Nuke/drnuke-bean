@@ -193,7 +193,7 @@ class PFGImporter(importer.ImporterProtocol):
                 # get closing balance, if available
                 # i just happens that the first trasaction contains the latest balance
                 if (first_transaction == True) & (len(row)==8):
-                    balance = Amount(DecimalOrZero(row[5]), self.currency)
+                    balance = Amount(DecimalOrZero(row[7]), self.currency)
                     entries.append(
                         data.Balance(
                             meta,
