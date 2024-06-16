@@ -74,6 +74,7 @@ class IBKRImporter(importer.ImporterProtocol):
         self.flag = '*'
         self.symbolMap = symbolMap
         self.configFile = configFile
+        self.roc_str = "Return of Capital" # that special swiss thing
 
     def identify(self, file):
         return self.configFile == path.basename(file.name)
@@ -201,8 +202,13 @@ class IBKRImporter(importer.ImporterProtocol):
         # Cash dividend is split from payment in lieu of a dividend.
         # Match them accordingly with the corresponding wht rows.
         # Make a copy of dataframe prior to append a column to avoid SettingWithCopyWarning
-        div = ct[ct['type'].map(lambda t: t == CashAction.DIVIDEND
+        dist = ct[ct['type'].map(lambda t: t == CashAction.DIVIDEND
                                 or t == CashAction.PAYMENTINLIEU)].copy()   # dividends only (both cash and payment in lieu of d.)
+        
+         # special swiss thing that looks like a dividend but legally isnt
+        dist["roc"] = dist.description.str.contains(self.roc_str)
+        div = dist[~dist.roc]
+        roc = dist[dist.roc]
         # Duplicate column to match later with wht
         div['__divtype__'] = div['type']
 
@@ -224,6 +230,7 @@ class IBKRImporter(importer.ImporterProtocol):
             match = pd.merge(
                 div, wht, on=['symbol', 'reportDate', '__divtype__'], how='left')
             matches = self.Dividends(match)
+        matches.extend(self.Dividends(roc,with_wht=False))
 
         dep = ct[ct['type'] == CashAction.DEPOSITWITHDRAW]    # Deposits only
         if len(dep) > 0:
@@ -303,10 +310,12 @@ class IBKRImporter(importer.ImporterProtocol):
                 text = row['description']
 
             # Find ISIN in description in parentheses
-            isin = "Unknown ISIN"
-            isins = re.findall('\(([a-zA-Z]{2}[a-zA-Z0-9]{9}\d)\)', text)
-            if len(isins) > 0:
-                isin = isins[0]
+            regex = "|".join([r'\(([a-zA-Z]{2}[a-zA-Z0-9]{9}\d)\)',
+                              self.roc_str])
+            if self.roc_str in text:
+                isin = self.roc_str
+            else:
+                isin = re.findall('\(([a-zA-Z]{2}[a-zA-Z0-9]{9}\d)\)', text)[0]
             pershare_match = re.search('(\d*[.]\d*)(\D*)(PER SHARE)',
                                        text, re.IGNORECASE)
             # payment in lieu of a dividend does not have a PER SHARE in description
