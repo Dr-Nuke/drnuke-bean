@@ -32,8 +32,6 @@ __plugins__ = ['recurring']
 
 
 def recurring(entries, options_map, config_str):
-    # converts a txn into recurring txns of same amount sum
-
     errors = []
     new_entries = []
 
@@ -45,36 +43,29 @@ def recurring(entries, options_map, config_str):
 
             date_range = pd.date_range(start=start_date, periods=times, freq=frequency)
 
-            # get list of amount values per posting. pay attentino to decimal rounding
-            amounts = dict()
-            for p in entry.postings:
+            # Create a unique key for each posting by combining account and index
+            amounts = []
+            for idx, p in enumerate(entry.postings):
                 amount_orig = p.units.number
-                splits = [round(amount_orig / times, 2) for i in range(times-1)]
-                splits.append(amount_orig-sum(splits))
-                amounts[p.account] = splits
+                splits = [round(amount_orig / times, 2) for i in range(times - 1)]
+                splits.append(amount_orig - sum(splits))
+                amounts.append((idx, p.account, splits))
 
-            # experimental: correct for ronding errors
-            rounding_errors = []
-            for i,x in enumerate(zip(*[v for v in amounts.values()])):
-                rounding_errors.append(sum(x))
-            if not sum(rounding_errors) ==0:
-                with redirect_stdout(buffer):
-                    printer.print_entry(entry)
-                entry_str = buffer.getvalue()
-                raise AssertionError(f"rounding errors do not sum to zero for entry \n{entry_str} when split into splits {amounts}")
-            
-            if any([e != 0 for e in rounding_errors]):
-                last_posting = entry.postings[-1].account
-                amounts[last_posting] = [value - error for value, error in zip(amounts[last_posting],rounding_errors) ]             
+            # Correct for rounding errors
+            rounding_errors = [0] * times
+            for _, _, splits in amounts:
+                for i, split in enumerate(splits):
+                    rounding_errors[i] += split
 
-            # prepare the meta
-            dropkeys = ['recurring_start',
-                    'recurring_frequency', 'recurring_frequency']
-            meta = {key: val for key, val in entry.meta.items()
-                    if key not in dropkeys}
-            meta.update(
-                {'recurring': f"split amounts into {times} chunks, {entry.meta['recurring_frequency']}, original txn date {entry.date.strftime(r'%Y-%m-%d')}"})
-        
+            if any(rounding_errors):
+                last_posting_idx = amounts[-1][0]
+                last_posting_splits = amounts[-1][2]
+                amounts[-1] = (last_posting_idx, amounts[-1][1], [value - rounding_errors[i] for i, value in enumerate(last_posting_splits)])
+
+            # Prepare the meta
+            dropkeys = ['recurring_start', 'recurring_frequency', 'recurring_times']
+            meta = {key: val for key, val in entry.meta.items() if key not in dropkeys}
+            meta.update({'recurring': f"split amounts into {times} chunks, {entry.meta['recurring_frequency']}, original txn date {entry.date.strftime(r'%Y-%m-%d')}"})
 
             for idx_date, new_date in enumerate(date_range):
                 new_txn = data.Transaction(
@@ -87,12 +78,12 @@ def recurring(entries, options_map, config_str):
                     links=entry.links,
                     postings=[]
                 )
-                for posting in entry.postings:
-                    amount = amounts[posting.account][idx_date]
+                for idx, account, splits in amounts:
+                    amount = splits[idx_date]
+                    posting = entry.postings[idx]
                     new_posting = posting._replace(units=posting.units._replace(number=amount))
                     new_txn.postings.append(new_posting)
                 new_entries.append(new_txn)
         else:
             new_entries.append(entry)
     return new_entries, errors
-
