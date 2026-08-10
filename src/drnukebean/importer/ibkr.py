@@ -997,7 +997,8 @@ class IBKRImporter(beangulp.Importer):
     def _div_income_account(self, currency: str, symbol: str, account_root: str) -> str:
         if self._div_account:
             return self._div_account
-        return f"{self._asset_account(symbol, account_root).replace('Assets', 'Income')}:{self._div_suffix}"
+        return "{}:{}".format(self._asset_account(symbol, account_root).replace('Assets', 'Income'),
+                              self._div_suffix)
 
     def _interest_account(self, currency: str, account_root: str) -> str:
         return f"{account_root.replace('Assets', 'Income')}:{self._interest_suffix}:{currency}"
@@ -1014,7 +1015,8 @@ class IBKRImporter(beangulp.Importer):
         return f"{account_root.replace('Assets', 'Expenses')}:{self._fees_suffix}:{currency}"
 
     def _pnl_account(self, symbol: str, account_root: str) -> str:
-        return f"{self._asset_account(symbol, account_root).replace('Assets', 'Income')}:{self._pnl_suffix}"
+        return "{}:{}".format(self._asset_account(symbol, account_root).replace('Assets', 'Income'),
+                              self._pnl_suffix)
 
     # ------------------------------------------------------------------
     # Symbol normalisation
