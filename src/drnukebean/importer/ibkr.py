@@ -208,6 +208,9 @@ class IBKRImporter(beangulp.Importer):
                             ``!`` transaction).  When ``None`` (default) all
                             statements are posted under *account*
                             (single-account mode); deposits get ``!`` flag.
+        asset_suffix:       Explicit asset suffix.  Overrides the derived
+                            ``<Account root>:<symbol>`` with
+                            ``<Account root>:<asset_suffix>``.
         div_suffix:         Sub-account suffix for dividend income
                             (default ``Div``).
         div_account:        Explicit dividend income account.  Overrides the
@@ -255,6 +258,7 @@ class IBKRImporter(beangulp.Importer):
         query_name: str | None = None,
         currency: str = "CHF",
         account_map: dict[str, dict[str, str]] | None = None,
+        asset_suffix: str | None = None,
         div_suffix: str = "Div",
         div_account: str | None = None,
         interest_suffix: str = "Interest",
@@ -278,6 +282,7 @@ class IBKRImporter(beangulp.Importer):
         self._query_name = query_name
         self._currency = currency
         self._account_map = account_map
+        self._asset_suffix = asset_suffix
         self._div_suffix = div_suffix
         self._div_account = div_account
         self._interest_suffix = interest_suffix
@@ -985,12 +990,15 @@ class IBKRImporter(beangulp.Importer):
         return f"{account_root}:{currency}"
 
     def _asset_account(self, symbol: str, account_root: str) -> str:
+        if self._asset_suffix:
+            return f"{account_root}:{self._asset_suffix}"
         return f"{account_root}:{symbol}"
 
     def _div_income_account(self, currency: str, symbol: str, account_root: str) -> str:
         if self._div_account:
             return self._div_account
-        return f"{account_root.replace('Assets', 'Income')}:{symbol}:{self._div_suffix}"
+        return "{}:{}".format(self._asset_account(symbol, account_root).replace('Assets', 'Income'),
+                              self._div_suffix)
 
     def _interest_account(self, currency: str, account_root: str) -> str:
         return f"{account_root.replace('Assets', 'Income')}:{self._interest_suffix}:{currency}"
@@ -1007,7 +1015,8 @@ class IBKRImporter(beangulp.Importer):
         return f"{account_root.replace('Assets', 'Expenses')}:{self._fees_suffix}:{currency}"
 
     def _pnl_account(self, symbol: str, account_root: str) -> str:
-        return f"{account_root.replace('Assets', 'Income')}:{symbol}:{self._pnl_suffix}"
+        return "{}:{}".format(self._asset_account(symbol, account_root).replace('Assets', 'Income'),
+                              self._pnl_suffix)
 
     # ------------------------------------------------------------------
     # Symbol normalisation
