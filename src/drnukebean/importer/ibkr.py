@@ -40,6 +40,8 @@ Trades            : Symbol, Currency, Quantity, TradePrice, Proceeds,
                     BuySell, LevelOfDetail
 CashTransactions  : Symbol, Currency, Amount, Type, Description,
                     ReportDate, DateTime
+Transfers         : Symbol, Currency, Amount, Type, Description,
+                    ReportDate, Quantity, CashTransfer, Account
 
 Usage in run_imports.py::
 
@@ -108,7 +110,7 @@ import beangulp
 from beancount.core import amount, data, position
 from beancount.core.number import D
 from ibflex import Types, parser
-from ibflex.enums import BuySell, CashAction
+from ibflex.enums import BuySell, CashAction, TransferType
 from loguru import logger
 
 from drnukebean.importer.util import amount_add, minus
@@ -356,6 +358,9 @@ class IBKRImporter(beangulp.Importer):
             entries.extend(self._trades(stmt.Trades, filepath, account_root))
             entries.extend(
                 self._cash_transactions(stmt.CashTransactions, filepath, account_root, deposit_from)
+            )
+            entries.extend(
+                self._transfers(stmt.Transfers, filepath, account_root)
             )
             entries.extend(self._balances(stmt.CashReport, account_root))
         return entries
@@ -950,6 +955,81 @@ class IBKRImporter(beangulp.Importer):
             flag,
             "self",
             "deposit / withdrawal",
+            data.EMPTY_SET,
+            data.EMPTY_SET,
+            postings,
+        )
+
+    # ------------------------------------------------------------------
+    # Transfers
+    # ------------------------------------------------------------------
+
+    def _transfers(
+        self, transfers, filepath: str, account_root: str
+    ) -> list:
+        """Accumulate transfer rows by type, then emit beancount entries."""
+        cash_xfers: list = []
+        sec_xfers: list = []
+
+        for trx in transfers:
+            self._sort_xfer_txn(trx, cash_xfers, sec_xfers)
+
+        return ([self._cash_xfer(trx, filepath, account_root) for trx in cash_xfers] + 
+                [self._sec_xfer(trx, filepath, account_root) for trx in sec_xfers])
+
+    def _sort_xfer_txn(
+        self,
+        trx,
+        cash_xfers: list,
+        sec_xfers: list,
+    ) -> None:
+        """Route transfer into the appropriate accumulator."""
+        symbol = trx.symbol
+        if trx.symbol:
+            sec_xfers.append(trx)
+        else:
+            cash_xfers.append(trx)
+
+    def _cash_xfer(
+        self, trx, filepath: str, account_root: str
+    ) -> data.Transaction:
+        currency = trx.currency
+        amt = amount.Amount(round(trx.cashTransfer, 2), currency)
+        local_leg = data.Posting(
+            self._liquidity_account(currency, account_root), amt, None, None, None, None
+        )
+        flag = "!"
+        postings = [local_leg]
+        description = "{} {} {}".format(currency, trx.type.value,
+                                        trx.description if trx.description else "TRANSFER")
+        return data.Transaction(
+            data.new_metadata(filepath, 0),
+            trx.reportDate,
+            flag,
+            trx.account,
+            description,
+            data.EMPTY_SET,
+            data.EMPTY_SET,
+            postings,
+        )
+
+    def _sec_xfer(
+        self, trx, filepath: str, account_root: str
+    ) -> data.Transaction:
+        symbol = trx.symbol
+        quantity = amount.Amount(trx.quantity, symbol)
+        local_leg = data.Posting(
+            self._asset_account(symbol, account_root), quantity, None, None, None, None
+        )
+        flag = "!"
+        postings = [local_leg]
+
+        return data.Transaction(
+            data.new_metadata(filepath, 0),
+            trx.reportDate,
+            flag,
+            trx.account,
+            "{} TRANSFER {}".format(trx.type.value, trx.description),
             data.EMPTY_SET,
             data.EMPTY_SET,
             postings,
