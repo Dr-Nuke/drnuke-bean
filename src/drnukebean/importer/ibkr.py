@@ -110,7 +110,7 @@ import beangulp
 from beancount.core import amount, data, position
 from beancount.core.number import D
 from ibflex import Types, parser
-from ibflex.enums import BuySell, CashAction, TransferType
+from ibflex.enums import BuySell, CashAction
 from loguru import logger
 
 from drnukebean.importer.util import amount_add, minus
@@ -974,7 +974,7 @@ class IBKRImporter(beangulp.Importer):
         for trx in transfers:
             self._sort_xfer_txn(trx, cash_xfers, sec_xfers)
 
-        return ([self._cash_xfer(trx, filepath, account_root) for trx in cash_xfers] + 
+        return ([self._cash_xfer(trx, filepath, account_root) for trx in cash_xfers] +
                 [self._sec_xfer(trx, filepath, account_root) for trx in sec_xfers])
 
     def _sort_xfer_txn(
@@ -984,7 +984,6 @@ class IBKRImporter(beangulp.Importer):
         sec_xfers: list,
     ) -> None:
         """Route transfer into the appropriate accumulator."""
-        symbol = trx.symbol
         if trx.symbol:
             sec_xfers.append(trx)
         else:
@@ -1029,7 +1028,7 @@ class IBKRImporter(beangulp.Importer):
             trx.reportDate,
             flag,
             trx.account,
-            "{} TRANSFER {}".format(trx.type.value, trx.description),
+            f"{trx.type.value} TRANSFER {trx.description}",
             data.EMPTY_SET,
             data.EMPTY_SET,
             postings,
