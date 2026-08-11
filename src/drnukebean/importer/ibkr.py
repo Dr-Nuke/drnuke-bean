@@ -984,9 +984,9 @@ class IBKRImporter(beangulp.Importer):
         sec_xfers: list,
     ) -> None:
         """Route transfer into the appropriate accumulator."""
-        if trx.symbol:
+        if trx.type and trx.symbol:
             sec_xfers.append(trx)
-        else:
+        elif trx.type and trx.cashTransfer:
             cash_xfers.append(trx)
 
     def _cash_xfer(
