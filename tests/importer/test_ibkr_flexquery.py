@@ -1,14 +1,15 @@
 """Unit tests for drnukebean.importer.ibkr_flexquery (network/cache layer).
 
-ibflex.client.download is mocked at the module boundary — no real HTTP
-requests are made.  diskcache.Cache is backed by a temporary directory so
-tests are fully isolated.
+ibkr_flexquery._download is mocked at the module boundary (its own tests mock
+the ibflex.client functions it calls) -- no real HTTP requests are made.
+diskcache.Cache is backed by a temporary directory so tests are fully isolated.
 """
 
 from __future__ import annotations
 
 import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -45,7 +46,7 @@ DATE_TO = datetime.date(2024, 1, 31)
 
 def _setup(dest_dir: Path, mocker, response=_SAMPLE_XML, query_name=_QUERY_NAME):
     """Return a configured setup callable with a mocked download."""
-    mocker.patch.object(fq_module.client, "download", return_value=response)
+    mocker.patch.object(fq_module, "_download", return_value=response)
     return make_ibkr_setup(
         token=_TOKEN,
         query_id=_QUERY_ID,
@@ -117,7 +118,7 @@ class TestSecondsUntilMidnight:
 
 class TestCacheMiss:
     def test_download_called_on_cache_miss(self, tmp_path, mocker):
-        mock_dl = mocker.patch.object(fq_module.client, "download", return_value=_SAMPLE_XML)
+        mock_dl = mocker.patch.object(fq_module, "_download", return_value=_SAMPLE_XML)
         setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
         setup(DATE_FROM, DATE_TO)
         mock_dl.assert_called_once_with(_TOKEN, _QUERY_ID)
@@ -167,14 +168,14 @@ class TestCacheHit:
 
     def test_download_not_called_on_cache_hit(self, tmp_path, mocker):
         self._prime_cache(tmp_path)
-        mock_dl = mocker.patch.object(fq_module.client, "download", return_value=_SAMPLE_XML)
+        mock_dl = mocker.patch.object(fq_module, "_download", return_value=_SAMPLE_XML)
         setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
         setup(DATE_FROM, DATE_TO)
         mock_dl.assert_not_called()
 
     def test_xml_file_written_from_cache(self, tmp_path, mocker):
         self._prime_cache(tmp_path)
-        mocker.patch.object(fq_module.client, "download", return_value=_SAMPLE_XML)
+        mocker.patch.object(fq_module, "_download", return_value=_SAMPLE_XML)
         setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
         setup(DATE_FROM, DATE_TO)
         xml_files = list(tmp_path.glob("ibkr_*.xml"))
@@ -182,7 +183,7 @@ class TestCacheHit:
 
     def test_existing_xml_not_overwritten(self, tmp_path, mocker):
         self._prime_cache(tmp_path)
-        mocker.patch.object(fq_module.client, "download", return_value=_SAMPLE_XML)
+        mocker.patch.object(fq_module, "_download", return_value=_SAMPLE_XML)
         # Pre-create the file with known content
         xml_file = tmp_path / "ibkr_2024-01-01_2024-01-31.xml"
         xml_file.write_bytes(b"original content")
@@ -198,7 +199,7 @@ class TestCacheHit:
 
 class TestQueryNameMismatch:
     def test_raises_on_queryname_mismatch(self, tmp_path, mocker):
-        mocker.patch.object(fq_module.client, "download", return_value=_WRONG_QUERY_XML)
+        mocker.patch.object(fq_module, "_download", return_value=_WRONG_QUERY_XML)
         setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
         with pytest.raises(RuntimeError, match="queryName mismatch"):
             setup(DATE_FROM, DATE_TO)
@@ -206,7 +207,7 @@ class TestQueryNameMismatch:
     def test_cache_not_populated_on_mismatch(self, tmp_path, mocker):
         import diskcache
 
-        mocker.patch.object(fq_module.client, "download", return_value=_WRONG_QUERY_XML)
+        mocker.patch.object(fq_module, "_download", return_value=_WRONG_QUERY_XML)
         setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
         try:
             setup(DATE_FROM, DATE_TO)
@@ -217,7 +218,7 @@ class TestQueryNameMismatch:
             assert cache_key not in cache
 
     def test_no_xml_file_written_on_mismatch(self, tmp_path, mocker):
-        mocker.patch.object(fq_module.client, "download", return_value=_WRONG_QUERY_XML)
+        mocker.patch.object(fq_module, "_download", return_value=_WRONG_QUERY_XML)
         setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
         try:
             setup(DATE_FROM, DATE_TO)
@@ -236,7 +237,7 @@ class TestDownloadError:
         from ibflex.client import ResponseCodeError
 
         mocker.patch.object(
-            fq_module.client, "download", side_effect=ResponseCodeError("1012", "Account not found")
+            fq_module, "_download", side_effect=ResponseCodeError("1012", "Account not found")
         )
         setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
         with pytest.raises(RuntimeError, match="IBKR FlexQuery download failed"):
@@ -255,9 +256,91 @@ class TestFallbackFilename:
             b'<FlexQueryResponse queryName="TestQuery" type="AF">'
             b'<FlexStatements count="0"/></FlexQueryResponse>'
         )
-        mocker.patch.object(fq_module.client, "download", return_value=bare_xml)
+        mocker.patch.object(fq_module, "_download", return_value=bare_xml)
         setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
         setup(DATE_FROM, DATE_TO)
         xml_files = list(tmp_path.glob("ibkr_*.xml"))
         assert len(xml_files) == 1
         assert xml_files[0].name == f"ibkr_{DATE_FROM}_{DATE_TO}.xml"
+
+    def test_statement_generation_timeout_raises_runtime_error(self, tmp_path, mocker):
+        from ibflex.client import StatementGenerationTimeout
+
+        mocker.patch.object(fq_module, "_download", side_effect=StatementGenerationTimeout("x"))
+        setup = make_ibkr_setup(_TOKEN, _QUERY_ID, _QUERY_NAME, tmp_path)
+        with pytest.raises(RuntimeError, match="IBKR FlexQuery download failed"):
+            setup(DATE_FROM, DATE_TO)
+
+
+# ===========================================================================
+# _download — 2-step protocol against mocked ibflex.client primitives
+# ===========================================================================
+
+_LEGACY_URL = "https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement"
+_REF_CODE = "1234567890"
+
+
+def _stmt_error(code: str, msg: str = "Please try again shortly.") -> SimpleNamespace:
+    """Fake requests.Response carrying a FlexStatementResponse error."""
+    return SimpleNamespace(
+        content=(
+            f'<FlexStatementResponse timestamp="15 November, 2026 05:44 AM EST">'
+            f"<Status>Fail</Status><ErrorCode>{code}</ErrorCode>"
+            f"<ErrorMessage>{msg}</ErrorMessage></FlexStatementResponse>"
+        ).encode()
+    )
+
+
+class TestDownload:
+    @pytest.fixture
+    def flex(self, mocker):
+        """Mock request_statement (returning the legacy Url) and submit_request."""
+        from ibflex.client import StatementAccess
+
+        mocker.patch.object(
+            fq_module.client,
+            "request_statement",
+            return_value=StatementAccess(
+                timestamp=datetime.datetime(2026, 11, 15),
+                ReferenceCode=_REF_CODE,
+                Url=_LEGACY_URL,
+            ),
+        )
+        submit = mocker.patch.object(fq_module.client, "submit_request")
+        sleep = mocker.patch.object(fq_module.time, "sleep")
+        return SimpleNamespace(submit=submit, sleep=sleep)
+
+    def test_returns_content_on_first_success(self, flex):
+        flex.submit.return_value = SimpleNamespace(content=_SAMPLE_XML)
+        assert fq_module._download(_TOKEN, _QUERY_ID) == _SAMPLE_XML
+        flex.sleep.assert_not_called()
+
+    def test_ignores_returned_legacy_url(self, flex):
+        flex.submit.return_value = SimpleNamespace(content=_SAMPLE_XML)
+        fq_module._download(_TOKEN, _QUERY_ID)
+        flex.submit.assert_called_once_with(url=fq_module._STMT_URL, token=_TOKEN, query=_REF_CODE)
+        assert "ndcdyn.interactivebrokers.com" in fq_module._STMT_URL
+
+    @pytest.mark.parametrize("code", ["1019", "1009", "1018", "1001", "1004", "1021"])
+    def test_retries_on_transient_codes(self, flex, code):
+        flex.submit.side_effect = [_stmt_error(code), SimpleNamespace(content=_SAMPLE_XML)]
+        assert fq_module._download(_TOKEN, _QUERY_ID) == _SAMPLE_XML
+        assert flex.submit.call_count == 2
+        flex.sleep.assert_called_once()
+
+    def test_raises_on_non_retryable_code(self, flex):
+        from ibflex.client import ResponseCodeError
+
+        flex.submit.return_value = _stmt_error("1015", "Token is invalid.")
+        with pytest.raises(ResponseCodeError, match="1015"):
+            fq_module._download(_TOKEN, _QUERY_ID)
+        assert flex.submit.call_count == 1
+
+    def test_timeout_after_max_tries(self, flex):
+        from ibflex.client import StatementGenerationTimeout
+
+        flex.submit.return_value = _stmt_error("1019")
+        with pytest.raises(StatementGenerationTimeout):
+            fq_module._download(_TOKEN, _QUERY_ID, max_tries=3)
+        assert flex.submit.call_count == 3
+        assert flex.sleep.call_count == 2

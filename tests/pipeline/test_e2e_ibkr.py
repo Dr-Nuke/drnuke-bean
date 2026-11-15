@@ -1,7 +1,7 @@
 """End-to-end tests: mocked IBKR download -> pipeline -> beancount output.
 
 Chain exercised (nothing mocked except the network layer):
-    ibflex.client.download  (mocked, returns real obfuscated fixture XML)
+    drnukebean.importer.ibkr_flexquery._download  (mocked, returns real obfuscated fixture XML)
     -> make_ibkr_setup      (diskcache + write XML to source_dir)
     -> run_all              (identify -> extract -> _append_entries)
     -> parse_string         (beancount syntax validation)
@@ -90,7 +90,7 @@ def _run(
 class TestFullRun:
     @pytest.fixture(autouse=True)
     def _mock_download(self, mocker):
-        mocker.patch.object(fq_module.client, "download", return_value=FIXTURE.read_bytes())
+        mocker.patch.object(fq_module, "_download", return_value=FIXTURE.read_bytes())
 
     @pytest.fixture(autouse=True)
     def _clean_argv(self, monkeypatch):
@@ -153,7 +153,7 @@ class TestLabeledRun:
 
     @pytest.fixture(autouse=True)
     def _mock_download(self, mocker):
-        mocker.patch.object(fq_module.client, "download", return_value=FIXTURE.read_bytes())
+        mocker.patch.object(fq_module, "_download", return_value=FIXTURE.read_bytes())
 
     @pytest.fixture(autouse=True)
     def _clean_argv(self, monkeypatch):
@@ -212,7 +212,7 @@ class TestLabeledRun:
 class TestDryRun:
     @pytest.fixture(autouse=True)
     def _mock_download(self, mocker):
-        mocker.patch.object(fq_module.client, "download", return_value=FIXTURE.read_bytes())
+        mocker.patch.object(fq_module, "_download", return_value=FIXTURE.read_bytes())
 
     @pytest.fixture(autouse=True)
     def _clean_argv(self, monkeypatch):
@@ -266,9 +266,7 @@ class TestCacheHandling:
         src = tmp_path / "ibkr"
         src.mkdir()
         out = tmp_path / "ibkr.bean"
-        mock_dl = mocker.patch.object(
-            fq_module.client, "download", return_value=FIXTURE.read_bytes()
-        )
+        mock_dl = mocker.patch.object(fq_module, "_download", return_value=FIXTURE.read_bytes())
         pipeline = _make_pipeline(src, out)
 
         _run(pipeline)  # first run: cache miss -> download
@@ -282,7 +280,7 @@ class TestCacheHandling:
         src = tmp_path / "ibkr"
         src.mkdir()
         out = tmp_path / "ibkr.bean"
-        mocker.patch.object(fq_module.client, "download", return_value=FIXTURE.read_bytes())
+        mocker.patch.object(fq_module, "_download", return_value=FIXTURE.read_bytes())
         pipeline = _make_pipeline(src, out)
 
         _run(pipeline)
