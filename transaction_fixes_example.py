@@ -10,6 +10,12 @@ Extend with your own rules, e.g.:
         txn = txn._replace(postings=[...])
     return txn
 
+To rewrite narration/payee and tag on a metadata field for a matched transaction:
+    if 'Card payment to myStore' in txn.narration:
+        txn = txn._replace(narration='Groceries', payee='myStore')
+        txn = txn._replace(meta={**txn.meta, 'category': 'groceries'})
+    return txn
+
 Cross-importer rules go in common_fixes(); call it first from each per-importer function.
 """
 
