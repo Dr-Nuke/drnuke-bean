@@ -46,6 +46,7 @@ Usage in run_imports.py::
 from __future__ import annotations
 
 import sys
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
@@ -54,7 +55,7 @@ from typing import cast
 
 import diskcache
 from ibflex import client
-from ibflex.client import ResponseCodeError
+from ibflex.client import IbflexClientError, ResponseCodeError, StatementGenerationTimeout
 from loguru import logger
 
 # ---------------------------------------------------------------------------
@@ -62,6 +63,68 @@ from loguru import logger
 # ---------------------------------------------------------------------------
 
 _FLEX_ROOT_TAG = "FlexQueryResponse"
+
+# GetStatement endpoint as documented for Flex Web Service v3.  Deliberately
+# NOT taken from the SendRequest response: IBKR still returns a <Url> on the
+# legacy host gdcdyn.interactivebrokers.com, which no longer resolves
+# (Nov 2026), and ibflex >= 1.2 prefers that returned Url over its own
+# STMT_URL.  Also not taken from ibflex.client.STMT_URL, which pointed to
+# gdcdyn in older ibflex releases.
+_STMT_URL = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement"
+
+# Poll limits for the GetStatement step.
+_MAX_TRIES = 5
+# Error codes that IBKR documents as "please try again shortly", in addition to
+# those ibflex.client.check_statement_response already treats as retryable
+# (1009, 1018, 1019).
+_EXTRA_RETRY_CODES = frozenset({"1001", "1004", "1021"})
+_EXTRA_RETRY_DELAY = 5
+
+
+def _download(token: str, query_id: str, max_tries: int = _MAX_TRIES) -> bytes:
+    """2-step FlexQuery download, always polling GetStatement on ``_STMT_URL``.
+
+    Replaces ``ibflex.client.download``, which follows the (stale) Url
+    returned by SendRequest.  Uses ibflex's request_statement for step 1 and
+    its check_statement_response for retry/error classification.
+
+    Raises:
+        ResponseCodeError:          non-retryable IBKR error code.
+        StatementGenerationTimeout: still not ready after *max_tries* polls.
+        BadResponseError:           unparseable IBKR response.
+    """
+    stmt_access = client.request_statement(token, query_id)
+    if stmt_access.Url and stmt_access.Url != _STMT_URL:
+        logger.debug(
+            "IBKR FlexQuery: ignoring returned GetStatement Url {} in favour of {}",
+            stmt_access.Url,
+            _STMT_URL,
+        )
+
+    for attempt in range(1, max_tries + 1):
+        response = client.submit_request(
+            url=_STMT_URL, token=token, query=stmt_access.ReferenceCode
+        )
+        try:
+            status = client.check_statement_response(response)
+        except ResponseCodeError as exc:
+            if exc.code not in _EXTRA_RETRY_CODES:
+                raise
+            status = _EXTRA_RETRY_DELAY
+        if status is True:
+            return response.content
+        if attempt < max_tries:
+            logger.info(
+                "IBKR FlexQuery: statement not ready (attempt {}/{}), retrying in {}s",
+                attempt,
+                max_tries,
+                status,
+            )
+            time.sleep(status)
+
+    raise StatementGenerationTimeout(
+        f"IBKR FlexQuery: statement not ready after {max_tries} attempts"
+    )
 
 
 def _extract_statement_dates(raw: str | bytes) -> tuple[str | None, str | None]:
@@ -125,8 +188,8 @@ def _get_response(
 
     logger.info("IBKR FlexQuery: downloading ({}) via API", query_name)
     try:
-        response = client.download(str(token), str(query_id))
-    except ResponseCodeError as exc:
+        response = _download(str(token), str(query_id))
+    except IbflexClientError as exc:
         logger.error("IBKR FlexQuery download failed: {}", exc)
         raise RuntimeError(f"IBKR FlexQuery download failed: {exc}") from exc
 
